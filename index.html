@@ -122,6 +122,12 @@ const BOSS_FIREBALL_SPEED = 260;
 new Phaser.Game(config);
 
 function preload() {
+  this.load.image('bg', 'assets/city.png');
+  this.load.spritesheet('fireball', 'assets/fireball.png', {
+    frameWidth: 121,
+    frameHeight: 100
+  });
+
   // Sprite sheet do Hulk (ajuste frameWidth/frameHeight depois, se precisar)
   this.load.spritesheet('hulk', 'assets/hulk.png', {
     frameWidth: 128,
@@ -130,8 +136,9 @@ function preload() {
 
   // Sprite sheet do boss (Thanos-like)
   this.load.spritesheet('thanos', 'assets/thanos.png', {
-    frameWidth: 85,
-    frameHeight: 92
+    frameWidth: 102,
+    frameHeight: 118,
+    endFrame: 9
   });
 
   // Sprite sheet dos inimigos (alien)
@@ -161,8 +168,12 @@ function create() {
   coinSpawnKeys = new Set();
   bossLastShotTime = 0;
 
-  // Fundo da cidade (camadas simples com profundidade)
-  createCityBackground(this, WORLD_WIDTH);
+  // Fundo de imagem cobrindo todo o nivel
+  const bg = this.add.image(0, 0, 'bg');
+  bg.setOrigin(0, 0);
+  bg.setDisplaySize(WORLD_WIDTH, WORLD_HEIGHT);
+  bg.setDepth(-100);
+  bg.setScrollFactor(0.5);
 
   // Limites do mundo (nível mais largo)
   this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -221,7 +232,7 @@ function create() {
   if (!this.anims.exists('boss-idle')) {
     this.anims.create({
       key: 'boss-idle',
-      frames: this.anims.generateFrameNumbers('thanos', { start: 0, end: 3 }),
+      frames: this.anims.generateFrameNumbers('thanos', { start: 0, end: 1 }),
       frameRate: 5,
       repeat: -1
     });
@@ -230,9 +241,18 @@ function create() {
   if (!this.anims.exists('boss-attack')) {
     this.anims.create({
       key: 'boss-attack',
-      frames: this.anims.generateFrameNumbers('thanos', { start: 4, end: 7 }),
+      frames: this.anims.generateFrameNumbers('thanos', { start: 2, end: 4 }),
       frameRate: 8,
       repeat: 0
+    });
+  }
+
+  if (!this.anims.exists('fireball-fly')) {
+    this.anims.create({
+      key: 'fireball-fly',
+      frames: this.anims.generateFrameNumbers('fireball', { start: 0, end: 12 }),
+      frameRate: 14,
+      repeat: -1
     });
   }
 
@@ -284,22 +304,11 @@ function create() {
 
   // Grupo de projéteis do boss (sem gravidade)
   fireballs = this.physics.add.group({
-    classType: Phaser.Physics.Arcade.Image,
+    classType: Phaser.Physics.Arcade.Sprite,
     allowGravity: false,
     immovable: false,
     maxSize: 40
   });
-
-  // Textura simples da fireball (laranja/vermelho)
-  if (!this.textures.exists('fireball')) {
-    const g = this.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0xff5a1f, 1);
-    g.fillCircle(8, 8, 8);
-    g.lineStyle(2, 0xffc14d, 1);
-    g.strokeCircle(8, 8, 7);
-    g.generateTexture('fireball', 16, 16);
-    g.destroy();
-  }
 
     // Colisão principal player x inimigo com prioridade de stomp
     this.physics.add.collider(player, enemies, (playerObj, enemy) => {
@@ -696,11 +705,14 @@ function spawnBossFireball(scene) {
   fireball.setVisible(true);
   fireball.setPosition(startX, startY);
   fireball.setDepth(20);
+  fireball.setScale(0.35); // 121x100 por frame → ~42x35 px em jogo
   fireball.body.enable = true;
   fireball.body.setAllowGravity(false);
-  fireball.body.setSize(12, 12, true);
+  fireball.body.setSize(60, 50, true);
+  fireball.anims.play('fireball-fly', true);
 
   const dirX = player.x > boss.x ? 1 : -1;
+  fireball.setFlipX(dirX === -1);
   fireball.setVelocityX(BOSS_FIREBALL_SPEED * dirX);
   fireball.setVelocityY(0);
 
@@ -726,10 +738,11 @@ function spawnBoss(scene, ground) {
   // Boss final no lado direito do mapa (sprite)
   boss = scene.physics.add.sprite(WORLD_WIDTH - 120, 540, 'thanos', 0);
   boss.setOrigin(0.5, 1);
-  boss.setScale(1.7); // maior que o player
+  boss.setScale(1.5); // maior que o player, sem exagerar corte visual
 
   // Corpo físico alinhado ao sprite escalado (centralizado)
-  boss.body.setSize(110, 145, true);
+  boss.body.setSize(66, 104, false);
+  boss.body.setOffset(18, 14);
   boss.body.setCollideWorldBounds(true);
   boss.body.setImmovable(false);
   boss.minX = WORLD_WIDTH - 260;
@@ -906,40 +919,6 @@ function spawnMoreContent(scene, xBase) {
   }
 }
 
-// Cria um cenário de cidade leve, usando apenas formas
-function createCityBackground(scene, sceneWidth = WORLD_WIDTH) {
-  const width = sceneWidth;
-  const height = WORLD_HEIGHT;
-  const cityBaseY = height - 40;
-
-  // Céu em duas faixas para dar profundidade
-  const skyTop = scene.add.rectangle(width / 2, height * 0.25, width, height * 0.5, 0x1b2a49).setDepth(-30);
-  const skyBottom = scene.add.rectangle(width / 2, height * 0.72, width, height * 0.56, 0x23395b).setDepth(-29);
-
-  // Lua
-  const moon = scene.add.circle(width * 0.85, height * 0.15, 28, 0xf2f2c9).setDepth(-28);
-
-  // Camada distante de prédios (mais escura)
-  for (let x = 40; x <= width + 40; x += 90) {
-    const h = Phaser.Math.Between(120, 220);
-    scene.add.rectangle(x, cityBaseY - h / 2, 70, h, 0x1a2238)
-      .setDepth(-27)
-      .setScrollFactor(1);
-  }
-
-  // Camada média de prédios (mais clara)
-  for (let x = 25; x <= width + 25; x += 80) {
-    const h = Phaser.Math.Between(90, 180);
-    scene.add.rectangle(x, cityBaseY - h / 2, 52, h, 0x2f3e63)
-      .setDepth(-26)
-      .setScrollFactor(1);
-  }
-
-  // Mantém referências para evitar aviso de variáveis não usadas
-  skyTop.alpha = 1;
-  skyBottom.alpha = 1;
-  moon.alpha = 1;
-}
 </script>
 
 </body>
