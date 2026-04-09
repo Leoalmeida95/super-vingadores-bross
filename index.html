@@ -118,6 +118,13 @@ let fireballs;
 let bossLastShotTime = 0;
 const BOSS_SHOT_COOLDOWN = 2000;
 const BOSS_FIREBALL_SPEED = 260;
+const THANOS_IMAGE_WIDTH = 510;
+const THANOS_IMAGE_HEIGHT = 217;
+// Usa apenas 1 pose limpa (coluna 4, linha 1) da imagem 510x217.
+const THANOS_CROP_X = 382;
+const THANOS_CROP_Y = 0;
+const THANOS_CROP_W = 128;
+const THANOS_CROP_H = 108;
 
 new Phaser.Game(config);
 
@@ -135,13 +142,8 @@ function preload() {
     frameHeight: 128
   });
 
-  // Sprite sheet do boss (Thanos-like)
-  // 4 colunas x 2 linhas = 8 frames validos (0-7)
-  this.load.spritesheet('thanos', 'assets/thanos.png', {
-    frameWidth: 102,
-    frameHeight: 118,
-    endFrame: 9
-  });
+  // Boss carregado como imagem unica (sem slicing de frames)
+  this.load.image('thanos', 'assets/thanos.png');
 
   // Sprite sheet dos inimigos (alien)
   this.load.spritesheet('enemy', 'assets/enemy.png', {
@@ -236,25 +238,6 @@ function create() {
     frameRate: 16,
     repeat: 0
   });
-
-  // Animações simples do boss
-  if (!this.anims.exists('boss-idle')) {
-    this.anims.create({
-      key: 'boss-idle',
-      frames: this.anims.generateFrameNumbers('thanos', { start: 6, end: 7 }),
-      frameRate: 6,
-      repeat: -1
-    });
-  }
-
-  if (!this.anims.exists('boss-attack')) {
-    this.anims.create({
-      key: 'boss-attack',
-      frames: this.anims.generateFrameNumbers('thanos', { start: 1, end: 2 }),
-      frameRate: 8,
-      repeat: 0
-    });
-  }
 
   if (!this.anims.exists('fireball-fly')) {
     this.anims.create({
@@ -574,10 +557,6 @@ function update() {
 
     boss.body.setVelocityX(boss.speed * boss.direction);
 
-    if (!boss.anims.currentAnim || boss.anims.currentAnim.key !== 'boss-idle') {
-      boss.anims.play('boss-idle', true);
-    }
-
     // Disparo periódico de fireballs sem alterar o movimento do boss
     if (this.time.now - bossLastShotTime >= BOSS_SHOT_COOLDOWN) {
       spawnBossFireball(this);
@@ -693,20 +672,13 @@ function setPlayerAnimation(key) {
   player.anims.play(key, true);
 }
 
-// Sincroniza sprite do boss com o corpo físico (alinhado ao chão)
-function syncBossVisualWithBody() {
-  if (!boss || !boss.body) return;
-
-  boss.x = boss.body.center.x;
-  boss.y = boss.body.bottom;
-}
-
 // Cria um projétil simples do boss em direção horizontal ao player
 function spawnBossFireball(scene) {
   if (!boss || !boss.active || !boss.body || !player || !player.active || !fireballs) return;
 
-  const startX = boss.body.center.x;
-  const startY = boss.body.center.y - 18;
+  const dirX = player.x > boss.x ? 1 : -1;
+  const startX = boss.body.center.x + (44 * dirX);
+  const startY = boss.body.center.y - 16;
   const fireball = fireballs.get(startX, startY, 'fireball');
   if (!fireball) return;
 
@@ -714,26 +686,15 @@ function spawnBossFireball(scene) {
   fireball.setVisible(true);
   fireball.setPosition(startX, startY);
   fireball.setDepth(20);
-  fireball.setScale(0.35); // 121x100 por frame → ~42x35 px em jogo
+  fireball.setScale(0.50); // 121x100 por frame → ~61x50 px em jogo
   fireball.body.enable = true;
   fireball.body.setAllowGravity(false);
-  fireball.body.setSize(60, 50, true);
+  fireball.body.setSize(80, 65, true);
   fireball.anims.play('fireball-fly', true);
 
-  const dirX = player.x > boss.x ? 1 : -1;
   fireball.setFlipX(dirX === -1);
   fireball.setVelocityX(BOSS_FIREBALL_SPEED * dirX);
   fireball.setVelocityY(0);
-
-  // Feedback visual curto de ataque sem alterar patrulha do boss
-  if (boss.anims) {
-    boss.anims.play('boss-attack', true);
-    scene.time.delayedCall(180, () => {
-      if (boss && boss.active) {
-        boss.anims.play('boss-idle', true);
-      }
-    });
-  }
 }
 
 // Cria boss quando o jogador junta moedas suficientes
@@ -744,22 +705,21 @@ function spawnBoss(scene, ground) {
   bossHealth = 5;
   bossCanTakeHit = true;
 
-  // Boss final no lado direito do mapa (sprite)
-  boss = scene.physics.add.sprite(WORLD_WIDTH - 120, 540, 'thanos', 0);
+  // Boss como imagem unica (sem spritesheet), com recorte de uma pose limpa
+  boss = scene.physics.add.image(WORLD_WIDTH - 120, 560, 'thanos');
+  boss.setCrop(THANOS_CROP_X, THANOS_CROP_Y, THANOS_CROP_W, THANOS_CROP_H);
   boss.setOrigin(0.5, 1);
-  boss.setScale(1.2); // 128x110 * 1.2 = 154x132 px em jogo
+  boss.setScale(1.22); // 128x108 -> ~156x132 em jogo
 
-  // Corpo fisico: offsetX centra horizontalmente, offsetY alinha base com o chao
-  // (frameH - offsetY - bodyH) * scale = 0 => offsetY=15, bodyH=95 => bottom==y
-  boss.body.setSize(70, 95, false);
-  boss.body.setOffset(29, 15);
+  // Corpo fisico alinhado no mesmo estilo do player (Arcade + offset centrado)
+  boss.body.setSize(68, 98, true);
+
   boss.body.setCollideWorldBounds(true);
   boss.body.setImmovable(false);
   boss.minX = WORLD_WIDTH - 260;
   boss.maxX = WORLD_WIDTH - 80;
   boss.direction = -1;
   boss.speed = 45;
-  boss.anims.play('boss-idle', true);
   bossLastShotTime = scene.time.now;
 
   // Boss colide com o chão
