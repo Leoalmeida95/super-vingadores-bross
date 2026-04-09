@@ -123,6 +123,7 @@ new Phaser.Game(config);
 
 function preload() {
   this.load.image('bg', 'assets/city.png');
+  this.load.image('ground', 'assets/city_ground.png');
   this.load.spritesheet('fireball', 'assets/fireball.png', {
     frameWidth: 121,
     frameHeight: 100
@@ -135,6 +136,7 @@ function preload() {
   });
 
   // Sprite sheet do boss (Thanos-like)
+  // 4 colunas x 2 linhas = 8 frames validos (0-7)
   this.load.spritesheet('thanos', 'assets/thanos.png', {
     frameWidth: 102,
     frameHeight: 118,
@@ -179,9 +181,16 @@ function create() {
   this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // chão (verde)
-  const ground = this.add.rectangle(WORLD_WIDTH / 2, 580, WORLD_WIDTH, 40, 0x00ff00);
-  this.physics.add.existing(ground, true);
+  // Chão visual em textura de rua (tileSprite repete a imagem por todo o mapa)
+  const groundVisual = this.add.tileSprite(0, 560, WORLD_WIDTH, 40, 'ground');
+  groundVisual.setOrigin(0, 0);
+  groundVisual.setDepth(-1);
+
+  // Corpo físico invisível alinhado ao chão (mantém todas as colisões existentes)
+  const groundBody = this.add.rectangle(WORLD_WIDTH / 2, 580, WORLD_WIDTH, 40);
+  groundBody.setAlpha(0);
+  this.physics.add.existing(groundBody, true);
+  const ground = groundBody;
 
   // Player com sprite (mantém física e colisões)
   player = this.physics.add.sprite(100, 450, 'hulk', 0);
@@ -232,8 +241,8 @@ function create() {
   if (!this.anims.exists('boss-idle')) {
     this.anims.create({
       key: 'boss-idle',
-      frames: this.anims.generateFrameNumbers('thanos', { start: 0, end: 1 }),
-      frameRate: 5,
+      frames: this.anims.generateFrameNumbers('thanos', { start: 6, end: 7 }),
+      frameRate: 6,
       repeat: -1
     });
   }
@@ -241,7 +250,7 @@ function create() {
   if (!this.anims.exists('boss-attack')) {
     this.anims.create({
       key: 'boss-attack',
-      frames: this.anims.generateFrameNumbers('thanos', { start: 2, end: 4 }),
+      frames: this.anims.generateFrameNumbers('thanos', { start: 1, end: 2 }),
       frameRate: 8,
       repeat: 0
     });
@@ -452,8 +461,8 @@ function create() {
   bossText.setDepth(1001);
 
   // Fundo leve para melhorar leitura do HUD
-  const hudBg = this.add.rectangle(140, 52, 250, 96, 0x000000, 0.32);
-  hudBg.setOrigin(0, 0.5);
+  const hudBg = this.add.rectangle(0, 0, 250, 104, 0x000000, 0.32);
+  hudBg.setOrigin(0, 0);
   hudBg.setScrollFactor(0);
   hudBg.setDepth(1000);
 
@@ -738,11 +747,12 @@ function spawnBoss(scene, ground) {
   // Boss final no lado direito do mapa (sprite)
   boss = scene.physics.add.sprite(WORLD_WIDTH - 120, 540, 'thanos', 0);
   boss.setOrigin(0.5, 1);
-  boss.setScale(1.5); // maior que o player, sem exagerar corte visual
+  boss.setScale(1.2); // 128x110 * 1.2 = 154x132 px em jogo
 
-  // Corpo físico alinhado ao sprite escalado (centralizado)
-  boss.body.setSize(66, 104, false);
-  boss.body.setOffset(18, 14);
+  // Corpo fisico: offsetX centra horizontalmente, offsetY alinha base com o chao
+  // (frameH - offsetY - bodyH) * scale = 0 => offsetY=15, bodyH=95 => bottom==y
+  boss.body.setSize(70, 95, false);
+  boss.body.setOffset(29, 15);
   boss.body.setCollideWorldBounds(true);
   boss.body.setImmovable(false);
   boss.minX = WORLD_WIDTH - 260;
