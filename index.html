@@ -28,6 +28,22 @@ const config = {
 
 let player;
 let cursors;
+let enemies;
+let keyX;
+let attackHitbox;
+let canAttack = true;
+let facing = 'right';
+let playerLives = 3;
+let isInvulnerable = false;
+let isGameOver = false;
+let livesText;
+let coins;
+let score = 0;
+let scoreText;
+let boss;
+let bossHealth = 5;
+let bossText;
+let bossCanTakeHit = true;
 
 new Phaser.Game(config);
 
@@ -44,14 +60,152 @@ function create() {
 
   this.physics.add.collider(player, ground);
 
+  // Inimigos simples (retângulos) em um grupo
+  enemies = this.physics.add.group();
+
+  // Cria vários inimigos com limites de patrulha (minX e maxX)
+  createEnemy(this, 300, 520, 220, 420);
+  createEnemy(this, 520, 520, 460, 700);
+  createEnemy(this, 700, 520, 620, 780);
+
+  // Inimigos colidem com o chão
+  this.physics.add.collider(enemies, ground);
+
+  // Colisão jogador x inimigos (dano apenas se não estiver atacando)
+  this.physics.add.collider(player, enemies, () => {
+    if (isGameOver) return;
+    if (attackHitbox && attackHitbox.body.enable) return;
+    damagePlayer(this);
+  });
+
   cursors = this.input.keyboard.createCursorKeys();
+
+  // Tecla de ataque (X)
+  keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+
+  // Hitbox do soco (fica invisível até o momento do ataque)
+  attackHitbox = this.add.rectangle(-100, -100, 35, 25, 0xffff00, 0.35);
+  this.physics.add.existing(attackHitbox);
+  attackHitbox.body.setAllowGravity(false);
+  attackHitbox.body.setImmovable(true);
+  attackHitbox.body.enable = false;
+  attackHitbox.setVisible(false);
+
+  // Se a hitbox tocar um inimigo, o inimigo é destruído
+  this.physics.add.overlap(attackHitbox, enemies, (hitbox, enemy) => {
+    if (!hitbox.body.enable || !enemy) return;
+    enemy.destroy();
+  });
+
+  // Boss final (maior e roxo), no lado direito do mapa
+  boss = this.add.rectangle(760, 500, 70, 90, 0x8a2be2);
+  this.physics.add.existing(boss);
+  boss.body.setCollideWorldBounds(true);
+  boss.body.setImmovable(false);
+  boss.minX = 690;
+  boss.maxX = 780;
+  boss.direction = -1;
+  boss.speed = 45;
+
+  // Boss colide com o chão
+  this.physics.add.collider(boss, ground);
+
+  // Boss causa dano ao encostar no jogador
+  this.physics.add.collider(player, boss, () => {
+    if (!boss || !boss.active) return;
+    damagePlayer(this);
+  });
+
+  // Boss só toma dano da hitbox de ataque
+  this.physics.add.overlap(attackHitbox, boss, (hitbox, bossObj) => {
+    if (!hitbox.body.enable || !bossObj.active || !bossCanTakeHit) return;
+
+    bossCanTakeHit = false;
+    bossHealth -= 1;
+    bossText.setText('Boss: ' + bossHealth);
+
+    // Feedback visual simples quando o boss toma dano
+    bossObj.setFillStyle(0xcc66ff);
+    this.time.delayedCall(100, () => {
+      if (bossObj.active) {
+        bossObj.setFillStyle(0x8a2be2);
+      }
+    });
+
+    if (bossHealth <= 0) {
+      bossObj.destroy();
+      isGameOver = true;
+      this.add.text(400, 300, 'YOU WIN', {
+        fontSize: '48px',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      return;
+    }
+
+    // Evita múltiplos hits no mesmo ataque
+    this.time.delayedCall(220, () => {
+      bossCanTakeHit = true;
+    });
+  });
+
+  // Moedas (círculos amarelos)
+  coins = this.physics.add.group();
+  createCoin(this, 180, 520);
+  createCoin(this, 260, 480);
+  createCoin(this, 420, 520);
+  createCoin(this, 560, 480);
+  createCoin(this, 740, 520);
+
+  // Coleta de moedas: some e soma +1 no score
+  this.physics.add.overlap(player, coins, (playerObj, coin) => {
+    if (!coin || !coin.active) return;
+
+    score += 1;
+    scoreText.setText('Moedas: ' + score);
+
+    // Feedback simples: moeda encolhe rápido antes de sumir
+    this.tweens.add({
+      targets: coin,
+      scaleX: 0,
+      scaleY: 0,
+      duration: 80,
+      onComplete: () => {
+        coin.destroy();
+      }
+    });
+  });
+
+  // HUD simples para mostrar vidas
+  livesText = this.add.text(16, 16, 'Vidas: ' + playerLives, {
+    fontSize: '24px',
+    color: '#ffffff'
+  });
+
+  // HUD do score de moedas
+  scoreText = this.add.text(16, 44, 'Moedas: ' + score, {
+    fontSize: '24px',
+    color: '#ffff66'
+  });
+
+  // HUD da vida do boss
+  bossText = this.add.text(16, 72, 'Boss: ' + bossHealth, {
+    fontSize: '24px',
+    color: '#dd99ff'
+  });
 }
 
 function update() {
+  if (isGameOver) {
+    player.body.setVelocityX(0);
+    return;
+  }
+
   if (cursors.left.isDown) {
     player.body.setVelocityX(-200);
+    facing = 'left';
   } else if (cursors.right.isDown) {
     player.body.setVelocityX(200);
+    facing = 'right';
   } else {
     player.body.setVelocityX(0);
   }
@@ -59,6 +213,126 @@ function update() {
   if (cursors.up.isDown && player.body.touching.down) {
     player.body.setVelocityY(-400);
   }
+
+  // Executa ataque ao pressionar X (com cooldown)
+  if (Phaser.Input.Keyboard.JustDown(keyX) && canAttack) {
+    performAttack(this);
+  }
+
+  // Movimento automático esquerda/direita dos inimigos
+  enemies.children.iterate((enemy) => {
+    if (!enemy) return;
+
+    // Inverte direção ao atingir os limites definidos
+    if (enemy.x <= enemy.minX) {
+      enemy.direction = 1;
+    } else if (enemy.x >= enemy.maxX) {
+      enemy.direction = -1;
+    }
+
+    enemy.body.setVelocityX(enemy.speed * enemy.direction);
+  });
+
+  // Movimento simples do boss (vai e volta devagar)
+  if (boss && boss.active) {
+    if (boss.x <= boss.minX) {
+      boss.direction = 1;
+    } else if (boss.x >= boss.maxX) {
+      boss.direction = -1;
+    }
+
+    boss.body.setVelocityX(boss.speed * boss.direction);
+  }
+}
+
+// Cria um soco curto na frente do jogador
+function performAttack(scene) {
+  canAttack = false;
+
+  // Direção do soco: aparece na frente do player
+  const offsetX = facing === 'right' ? 40 : -40;
+  attackHitbox.setPosition(player.x + offsetX, player.y);
+  attackHitbox.setVisible(true);
+  attackHitbox.body.enable = true;
+  attackHitbox.body.updateFromGameObject();
+
+  // Hitbox some rapidamente
+  scene.time.delayedCall(200, () => {
+    attackHitbox.body.enable = false;
+    attackHitbox.setVisible(false);
+  });
+
+  // Cooldown para evitar spam
+  scene.time.delayedCall(300, () => {
+    canAttack = true;
+  });
+}
+
+// Aplica dano no jogador com invencibilidade temporária
+function damagePlayer(scene) {
+  if (isInvulnerable || isGameOver) return;
+
+  playerLives -= 1;
+  livesText.setText('Vidas: ' + playerLives);
+
+  // Feedback visual: muda cor + pisca por 1 segundo
+  isInvulnerable = true;
+  player.setFillStyle(0xff6666);
+  scene.tweens.add({
+    targets: player,
+    alpha: 0.3,
+    duration: 100,
+    yoyo: true,
+    repeat: 5,
+    onComplete: () => {
+      player.alpha = 1;
+      player.setFillStyle(0xff0000);
+    }
+  });
+
+  if (playerLives <= 0) {
+    isGameOver = true;
+    scene.add.text(400, 300, 'Game Over', {
+      fontSize: '48px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    // Reinicia a cena após um pequeno tempo
+    scene.time.delayedCall(1500, () => {
+      scene.scene.restart();
+    });
+    return;
+  }
+
+  scene.time.delayedCall(1000, () => {
+    isInvulnerable = false;
+  });
+}
+
+// Função simples para criar um inimigo com patrulha horizontal
+function createEnemy(scene, x, y, minX, maxX) {
+  const enemy = scene.add.rectangle(x, y, 40, 40, 0x3366ff);
+  scene.physics.add.existing(enemy);
+
+  enemy.body.setCollideWorldBounds(true);
+  enemy.minX = minX;
+  enemy.maxX = maxX;
+  enemy.speed = 80;
+  enemy.direction = 1;
+
+  enemies.add(enemy);
+}
+
+// Função simples para criar uma moeda
+function createCoin(scene, x, y) {
+  const coin = scene.add.circle(x, y, 10, 0xffdd33);
+  scene.physics.add.existing(coin);
+
+  // Moeda não sofre gravidade e fica parada no mapa
+  coin.body.setAllowGravity(false);
+  coin.body.setImmovable(true);
+
+  coins.add(coin);
 }
 </script>
 
