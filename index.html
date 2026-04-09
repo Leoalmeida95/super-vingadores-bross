@@ -73,7 +73,7 @@ const config = {
     default: 'arcade',
     arcade: {
       gravity: { y: 600 },
-      debug: false
+      debug: true
     }
   },
   scene: {
@@ -97,7 +97,7 @@ let footHitbox;
 let canAttack = true;
 let isAttacking = false;
 let facing = 'right';
-let playerLives = 5;
+let playerLives = 10;
 let isInvulnerable = false;
 let isGameOver = false;
 let livesText;
@@ -114,6 +114,10 @@ let coinSpawnKeys = new Set();
 let bgMusic;
 let musicStarted = false;
 let stompLockUntil = 0;
+let fireballs;
+let bossLastShotTime = 0;
+const BOSS_SHOT_COOLDOWN = 2000;
+const BOSS_FIREBALL_SPEED = 260;
 
 new Phaser.Game(config);
 
@@ -130,6 +134,12 @@ function preload() {
     frameHeight: 92
   });
 
+  // Sprite sheet dos inimigos (alien)
+  this.load.spritesheet('enemy', 'assets/enemy.png', {
+    frameWidth: 32,
+    frameHeight: 40
+  });
+
   // Musica de fundo
   this.load.audio('bg-music', 'assets/music.mp3');
 }
@@ -141,7 +151,7 @@ function create() {
   canAttack = true;
   isAttacking = false;
   facing = 'right';
-  playerLives = 5;
+  playerLives = 10;
   score = 0;
   bossHealth = 5;
   bossCanTakeHit = true;
@@ -149,6 +159,7 @@ function create() {
   boss = null;
   lastSpawnX = 400;
   coinSpawnKeys = new Set();
+  bossLastShotTime = 0;
 
   // Fundo da cidade (camadas simples com profundidade)
   createCityBackground(this, WORLD_WIDTH);
@@ -225,6 +236,36 @@ function create() {
     });
   }
 
+  // Animações simples dos inimigos
+  if (this.textures.exists('enemy')) {
+    if (!this.anims.exists('enemy-idle')) {
+      this.anims.create({
+        key: 'enemy-idle',
+        frames: this.anims.generateFrameNumbers('enemy', { start: 0, end: 1 }),
+        frameRate: 4,
+        repeat: -1
+      });
+    }
+
+    if (!this.anims.exists('enemy-walk')) {
+      this.anims.create({
+        key: 'enemy-walk',
+        frames: this.anims.generateFrameNumbers('enemy', { start: 2, end: 7 }),
+        frameRate: 10,
+        repeat: -1
+      });
+    }
+
+    if (!this.anims.exists('enemy-attack')) {
+      this.anims.create({
+        key: 'enemy-attack',
+        frames: this.anims.generateFrameNumbers('enemy', { start: 8, end: 11 }),
+        frameRate: 8,
+        repeat: 0
+      });
+    }
+  }
+
   // Começa parado no idle
   player.anims.play('idle');
 
@@ -241,14 +282,60 @@ function create() {
   // Inimigos colidem com o chão
   this.physics.add.collider(enemies, ground);
 
-    // Colisão principal player x inimigo: dano lateral
-    this.physics.add.collider(player, enemies, (_playerObj, enemy) => {
+  // Grupo de projéteis do boss (sem gravidade)
+  fireballs = this.physics.add.group({
+    classType: Phaser.Physics.Arcade.Image,
+    allowGravity: false,
+    immovable: false,
+    maxSize: 40
+  });
+
+  // Textura simples da fireball (laranja/vermelho)
+  if (!this.textures.exists('fireball')) {
+    const g = this.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0xff5a1f, 1);
+    g.fillCircle(8, 8, 8);
+    g.lineStyle(2, 0xffc14d, 1);
+    g.strokeCircle(8, 8, 7);
+    g.generateTexture('fireball', 16, 16);
+    g.destroy();
+  }
+
+    // Colisão principal player x inimigo com prioridade de stomp
+    this.physics.add.collider(player, enemies, (playerObj, enemy) => {
       if (!enemy || !enemy.active || enemy.isDying) return;
       if (attackHitbox && attackHitbox.body.enable) return;
 
-      // Prioridade do stomp: se overlap do pé estiver ativo enquanto cai, não aplica dano.
-      const stompCandidate = player.body.velocity.y > 50 && this.physics.overlap(footHitbox, enemy);
-      if (stompCandidate) return;
+      const isFalling = playerObj.body.velocity.y > 50;
+      const stompBySensor = this.physics.overlap(footHitbox, enemy);
+
+      // Regra mais confiável para stomp:
+      // - jogador está caindo
+      // - corpo do jogador está acima do centro do inimigo
+      // - borda inferior está dentro de uma tolerância ampla sobre o topo
+      const aboveEnemyCenter = playerObj.body.center.y < enemy.body.center.y;
+      const topTolerance = playerObj.body.bottom <= enemy.body.top + 40;
+      const stompByTop = aboveEnemyCenter && topTolerance;
+
+      // Prioridade total do stomp (sensor + fallback por posição)
+      if (isFalling && (stompBySensor || stompByTop)) {
+        stompLockUntil = this.time.now + 120;
+        console.log('[StompDebug] stomp trigger', {
+          playerX: player.x,
+          playerY: player.y,
+          enemyX: enemy.x,
+          enemyY: enemy.y,
+          velocityY: player.body.velocity.y,
+          stompBySensor,
+          stompByTop,
+          aboveEnemyCenter,
+          topTolerance
+        });
+
+        destroyEnemyOnHit(this, enemy);
+        playerObj.setVelocityY(-350);
+        return;
+      }
 
       // Janela curta para evitar conflito no mesmo frame entre stomp e dano.
       if (this.time.now < stompLockUntil) return;
@@ -261,25 +348,6 @@ function create() {
         velocityY: player.body.velocity.y
       });
       damagePlayer(this);
-    });
-
-    // Stomp via foot hitbox: confiável
-    this.physics.add.overlap(footHitbox, enemies, (_sensor, enemy) => {
-      if (!enemy || !enemy.active || enemy.isDying) return;
-      if (player.body.velocity.y <= 50) return;
-
-      stompLockUntil = this.time.now + 120;
-
-      console.log('[StompDebug] stomp trigger', {
-        playerX: player.x,
-        playerY: player.y,
-        enemyX: enemy.x,
-        enemyY: enemy.y,
-        velocityY: player.body.velocity.y
-      });
-
-      destroyEnemyOnHit(this, enemy);
-      player.setVelocityY(-350);
     });
 
   cursors = this.input.keyboard.createCursorKeys();
@@ -300,6 +368,13 @@ function create() {
   this.physics.add.overlap(attackHitbox, enemies, (hitbox, enemy) => {
     if (!hitbox.body.enable || !enemy || !enemy.active) return;
     destroyEnemyOnHit(this, enemy);
+  });
+
+  // Se fireball tocar no player, aplica dano e destrói o projétil
+  this.physics.add.overlap(player, fireballs, (playerObj, fireball) => {
+    if (!fireball || !fireball.active) return;
+    fireball.disableBody(true, true);
+    damagePlayer(this);
   });
 
   // Boss nasce depois que o player coleta 5 moedas
@@ -400,8 +475,8 @@ function create() {
 function update() {
   // Mantém o foot hitbox alinhado com o jogador a cada frame
   if (footHitbox && footHitbox.body && player && player.body) {
-    footHitbox.x = player.x;
-    footHitbox.y = player.y + (player.height / 2);
+    footHitbox.x = player.body.center.x;
+    footHitbox.y = player.body.bottom + 4;
     footHitbox.body.updateFromGameObject();
   }
 
@@ -460,8 +535,13 @@ function update() {
 
     enemy.body.setVelocityX(enemy.speed * enemy.direction);
 
-    // Mantém o visual do inimigo alinhado ao corpo físico
-    updateEnemyVisual(enemy);
+    // Flip conforme direção
+    enemy.setFlipX(enemy.direction === -1);
+
+    // Animação padrão do inimigo
+    if (!enemy.anims.currentAnim || enemy.anims.currentAnim.key !== 'enemy-walk') {
+      enemy.anims.play('enemy-walk', true);
+    }
   });
 
   // Movimento simples do boss (vai e volta devagar)
@@ -480,8 +560,25 @@ function update() {
       boss.anims.play('boss-idle', true);
     }
 
-    // Mantém o visual sempre sincronizado com o corpo físico
-    syncBossVisualWithBody();
+    // Disparo periódico de fireballs sem alterar o movimento do boss
+    if (this.time.now - bossLastShotTime >= BOSS_SHOT_COOLDOWN) {
+      spawnBossFireball(this);
+      bossLastShotTime = this.time.now;
+    }
+
+    // O sprite já sincroniza com o corpo automaticamente no Arcade.
+  }
+
+  // Limpa projéteis que saíram da tela útil/mundo
+  if (fireballs) {
+    fireballs.children.iterate((fireball) => {
+      if (!fireball || !fireball.active) return;
+
+      const outOfWorld = fireball.x < -40 || fireball.x > WORLD_WIDTH + 40 || fireball.y > WORLD_HEIGHT + 40;
+      if (outOfWorld) {
+        fireball.disableBody(true, true);
+      }
+    });
   }
 
   // Spawna mais conteúdo conforme o jogador avança pelo mapa
@@ -582,9 +679,40 @@ function setPlayerAnimation(key) {
 function syncBossVisualWithBody() {
   if (!boss || !boss.body) return;
 
-  boss.setOrigin(0.5, 1);
   boss.x = boss.body.center.x;
   boss.y = boss.body.bottom;
+}
+
+// Cria um projétil simples do boss em direção horizontal ao player
+function spawnBossFireball(scene) {
+  if (!boss || !boss.active || !boss.body || !player || !player.active || !fireballs) return;
+
+  const startX = boss.body.center.x;
+  const startY = boss.body.center.y - 18;
+  const fireball = fireballs.get(startX, startY, 'fireball');
+  if (!fireball) return;
+
+  fireball.setActive(true);
+  fireball.setVisible(true);
+  fireball.setPosition(startX, startY);
+  fireball.setDepth(20);
+  fireball.body.enable = true;
+  fireball.body.setAllowGravity(false);
+  fireball.body.setSize(12, 12, true);
+
+  const dirX = player.x > boss.x ? 1 : -1;
+  fireball.setVelocityX(BOSS_FIREBALL_SPEED * dirX);
+  fireball.setVelocityY(0);
+
+  // Feedback visual curto de ataque sem alterar patrulha do boss
+  if (boss.anims) {
+    boss.anims.play('boss-attack', true);
+    scene.time.delayedCall(180, () => {
+      if (boss && boss.active) {
+        boss.anims.play('boss-idle', true);
+      }
+    });
+  }
 }
 
 // Cria boss quando o jogador junta moedas suficientes
@@ -609,6 +737,7 @@ function spawnBoss(scene, ground) {
   boss.direction = -1;
   boss.speed = 45;
   boss.anims.play('boss-idle', true);
+  bossLastShotTime = scene.time.now;
 
   // Boss colide com o chão
   scene.physics.add.collider(boss, ground);
@@ -656,11 +785,10 @@ function spawnBoss(scene, ground) {
 
 // Função simples para criar um inimigo com patrulha horizontal
 function createEnemy(scene, x, y, minX, maxX) {
-  const enemy = scene.add.rectangle(x, y, 40, 40, 0xff3333);
-  scene.physics.add.existing(enemy);
-
-  // O retângulo físico fica invisível; o visual real é feito por múltiplas formas
-  enemy.setVisible(false);
+  const enemy = scene.physics.add.sprite(x, y, 'enemy', 0);
+  enemy.setOrigin(0.5, 1);
+  enemy.body.setSize(34, 40, true);
+  enemy.anims.play('enemy-walk', true);
 
   enemy.body.setCollideWorldBounds(true);
   enemy.minX = minX;
@@ -668,47 +796,7 @@ function createEnemy(scene, x, y, minX, maxX) {
   enemy.speed = 80;
   enemy.direction = 1;
 
-  createEnemyVisual(scene, enemy);
-
-  // Quando o inimigo morrer, remove também as partes visuais
-  enemy.on('destroy', () => {
-    if (!enemy.visualParts) return;
-    enemy.visualParts.forEach((part) => part.destroy());
-  });
-
   enemies.add(enemy);
-}
-
-// Cria um visual mais interessante para o inimigo (corpo + olhos + pés)
-function createEnemyVisual(scene, enemy) {
-  const body = scene.add.rectangle(enemy.x, enemy.y, 34, 28, 0xcc2222);
-  const eyeLeft = scene.add.circle(enemy.x - 7, enemy.y - 3, 3, 0xffffff);
-  const eyeRight = scene.add.circle(enemy.x + 7, enemy.y - 3, 3, 0xffffff);
-  const pupilLeft = scene.add.circle(enemy.x - 7, enemy.y - 3, 1.3, 0x111111);
-  const pupilRight = scene.add.circle(enemy.x + 7, enemy.y - 3, 1.3, 0x111111);
-  const footLeft = scene.add.rectangle(enemy.x - 8, enemy.y + 15, 8, 5, 0x7a0f0f);
-  const footRight = scene.add.rectangle(enemy.x + 8, enemy.y + 15, 8, 5, 0x7a0f0f);
-
-  enemy.visualParts = [body, eyeLeft, eyeRight, pupilLeft, pupilRight, footLeft, footRight];
-
-  updateEnemyVisual(enemy);
-}
-
-// Atualiza posição das partes visuais do inimigo de acordo com o corpo físico
-function updateEnemyVisual(enemy) {
-  if (!enemy.visualParts) return;
-
-  const dir = enemy.direction || 1;
-  const eyeOffsetX = 7 * dir;
-  const pupilOffsetX = 7.8 * dir;
-
-  enemy.visualParts[0].setPosition(enemy.x, enemy.y);
-  enemy.visualParts[1].setPosition(enemy.x + eyeOffsetX, enemy.y - 3);
-  enemy.visualParts[2].setPosition(enemy.x - eyeOffsetX, enemy.y - 3);
-  enemy.visualParts[3].setPosition(enemy.x + pupilOffsetX, enemy.y - 3);
-  enemy.visualParts[4].setPosition(enemy.x - pupilOffsetX, enemy.y - 3);
-  enemy.visualParts[5].setPosition(enemy.x - 8, enemy.y + 15);
-  enemy.visualParts[6].setPosition(enemy.x + 8, enemy.y + 15);
 }
 
 // Efeito leve ao coletar moeda (sem custo alto)
