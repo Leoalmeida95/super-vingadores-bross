@@ -21,6 +21,7 @@ const config = {
     }
   },
   scene: {
+    preload,
     create,
     update
   }
@@ -32,6 +33,7 @@ let enemies;
 let keyX;
 let attackHitbox;
 let canAttack = true;
+let isAttacking = false;
 let facing = 'right';
 let playerLives = 3;
 let isInvulnerable = false;
@@ -44,10 +46,17 @@ let boss;
 let bossHealth = 5;
 let bossText;
 let bossCanTakeHit = true;
-let playerParts = {};
 let bossParts = {};
 
 new Phaser.Game(config);
+
+function preload() {
+  // Sprite sheet do Hulk (ajuste frameWidth/frameHeight depois, se precisar)
+  this.load.spritesheet('hulk', 'assets/hulk.png', {
+    frameWidth: 64,
+    frameHeight: 64
+  });
+}
 
 function create() {
   // Fundo da cidade (camadas simples com profundidade)
@@ -57,15 +66,42 @@ function create() {
   const ground = this.add.rectangle(400, 580, 800, 40, 0x00ff00);
   this.physics.add.existing(ground, true);
 
-  // Player físico (usado para colisão e controle)
-  player = this.add.rectangle(100, 450, 50, 50, 0xff0000);
-  this.physics.add.existing(player);
+  // Player com sprite (mantém física e colisões)
+  player = this.physics.add.sprite(100, 450, 'hulk', 0);
 
   player.body.setCollideWorldBounds(true);
 
-  // Esconde o retângulo base e cria visual estilo Hulk com formas
-  player.setVisible(false);
-  createPlayerVisual(this);
+  // Animações básicas do player (ajuste os ranges depois conforme seu sprite sheet)
+  this.anims.create({
+    key: 'idle',
+    frames: this.anims.generateFrameNumbers('hulk', { start: 0, end: 3 }),
+    frameRate: 6,
+    repeat: -1
+  });
+
+  this.anims.create({
+    key: 'run',
+    frames: this.anims.generateFrameNumbers('hulk', { start: 4, end: 11 }),
+    frameRate: 12,
+    repeat: -1
+  });
+
+  this.anims.create({
+    key: 'jump',
+    frames: this.anims.generateFrameNumbers('hulk', { start: 12, end: 15 }),
+    frameRate: 10,
+    repeat: -1
+  });
+
+  this.anims.create({
+    key: 'attack',
+    frames: this.anims.generateFrameNumbers('hulk', { start: 16, end: 21 }),
+    frameRate: 16,
+    repeat: 0
+  });
+
+  // Começa parado no idle
+  player.anims.play('idle');
 
   this.physics.add.collider(player, ground);
 
@@ -239,9 +275,11 @@ function update() {
   if (cursors.left.isDown) {
     player.body.setVelocityX(-200);
     facing = 'left';
+    player.setFlipX(true);
   } else if (cursors.right.isDown) {
     player.body.setVelocityX(200);
     facing = 'right';
+    player.setFlipX(false);
   } else {
     player.body.setVelocityX(0);
   }
@@ -253,6 +291,21 @@ function update() {
   // Executa ataque ao pressionar X (com cooldown)
   if (Phaser.Input.Keyboard.JustDown(keyX) && canAttack) {
     performAttack(this);
+  }
+
+  // Controle simples de animações baseado no estado atual
+  const onGround = player.body.touching.down || player.body.blocked.down;
+
+  if (isAttacking) {
+    if (!player.anims.currentAnim || player.anims.currentAnim.key !== 'attack') {
+      player.anims.play('attack', true);
+    }
+  } else if (!onGround) {
+    player.anims.play('jump', true);
+  } else if (Math.abs(player.body.velocity.x) > 5) {
+    player.anims.play('run', true);
+  } else {
+    player.anims.play('idle', true);
   }
 
   // Movimento automático esquerda/direita dos inimigos
@@ -286,13 +339,15 @@ function update() {
     updateBossVisual();
   }
 
-  // Mantém o visual do personagem alinhado ao player físico
-  updatePlayerVisual();
 }
 
 // Cria um soco curto na frente do jogador
 function performAttack(scene) {
   canAttack = false;
+  isAttacking = true;
+
+  // Força animação de ataque no momento do soco
+  player.anims.play('attack', true);
 
   // Direção do soco: aparece na frente do player
   const offsetX = facing === 'right' ? 40 : -40;
@@ -305,6 +360,11 @@ function performAttack(scene) {
   scene.time.delayedCall(200, () => {
     attackHitbox.body.enable = false;
     attackHitbox.setVisible(false);
+  });
+
+  // Tempo de estado de ataque (visual + lógica)
+  scene.time.delayedCall(220, () => {
+    isAttacking = false;
   });
 
   // Cooldown para evitar spam
@@ -322,15 +382,16 @@ function damagePlayer(scene) {
 
   // Feedback visual: muda cor + pisca por 1 segundo
   isInvulnerable = true;
-  setPlayerVisualColor(0x77dd77, 0xff6666);
+  player.setTint(0xff6666);
   scene.tweens.add({
-    targets: [playerParts.head, playerParts.body, playerParts.armLeft, playerParts.armRight, playerParts.legLeft, playerParts.legRight],
+    targets: player,
     alpha: 0.3,
     duration: 100,
     yoyo: true,
     repeat: 5,
     onComplete: () => {
-      setPlayerVisualColor(0x77dd77, 0x32cd32);
+      player.alpha = 1;
+      player.clearTint();
     }
   });
 
@@ -351,47 +412,6 @@ function damagePlayer(scene) {
   scene.time.delayedCall(1000, () => {
     isInvulnerable = false;
   });
-}
-
-// Cria o visual do herói com várias formas (estilo Hulk)
-function createPlayerVisual(scene) {
-  playerParts.head = scene.add.circle(player.x, player.y - 24, 12, 0x77dd77);
-  playerParts.body = scene.add.rectangle(player.x, player.y + 4, 26, 30, 0x32cd32);
-  playerParts.armLeft = scene.add.rectangle(player.x - 18, player.y + 2, 10, 24, 0x2eb82e);
-  playerParts.armRight = scene.add.rectangle(player.x + 18, player.y + 2, 10, 24, 0x2eb82e);
-  playerParts.legLeft = scene.add.rectangle(player.x - 8, player.y + 24, 9, 18, 0x1f7a1f);
-  playerParts.legRight = scene.add.rectangle(player.x + 8, player.y + 24, 9, 18, 0x1f7a1f);
-}
-
-// Atualiza posição das partes visuais conforme o corpo físico
-function updatePlayerVisual() {
-  if (!playerParts.head) return;
-
-  const dir = facing === 'right' ? 1 : -1;
-
-  playerParts.head.setPosition(player.x, player.y - 24);
-  playerParts.body.setPosition(player.x, player.y + 4);
-  playerParts.armLeft.setPosition(player.x - (14 * dir), player.y + 2);
-  playerParts.armRight.setPosition(player.x + (20 * dir), player.y + 2);
-  playerParts.legLeft.setPosition(player.x - 8, player.y + 24);
-  playerParts.legRight.setPosition(player.x + 8, player.y + 24);
-}
-
-// Troca as cores do personagem para feedback visual (dano/normal)
-function setPlayerVisualColor(headColor, bodyColor) {
-  playerParts.head.setFillStyle(headColor);
-  playerParts.body.setFillStyle(bodyColor);
-  playerParts.armLeft.setFillStyle(bodyColor);
-  playerParts.armRight.setFillStyle(bodyColor);
-  playerParts.legLeft.setFillStyle(0x1f7a1f);
-  playerParts.legRight.setFillStyle(0x1f7a1f);
-
-  playerParts.head.alpha = 1;
-  playerParts.body.alpha = 1;
-  playerParts.armLeft.alpha = 1;
-  playerParts.armRight.alpha = 1;
-  playerParts.legLeft.alpha = 1;
-  playerParts.legRight.alpha = 1;
 }
 
 // Cria visual do boss com várias formas roxas (mais imponente)
