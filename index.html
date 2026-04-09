@@ -93,6 +93,7 @@ let cursors;
 let enemies;
 let keyX;
 let attackHitbox;
+let footHitbox;
 let canAttack = true;
 let isAttacking = false;
 let facing = 'right';
@@ -110,6 +111,9 @@ let bossCanTakeHit = true;
 let bossSpawned = false;
 let lastSpawnX = 0;
 let coinSpawnKeys = new Set();
+let bgMusic;
+let musicStarted = false;
+let stompLockUntil = 0;
 
 new Phaser.Game(config);
 
@@ -125,6 +129,9 @@ function preload() {
     frameWidth: 85,
     frameHeight: 92
   });
+
+  // Musica de fundo
+  this.load.audio('bg-music', 'assets/music.mp3');
 }
 
 function create() {
@@ -158,6 +165,14 @@ function create() {
   player = this.physics.add.sprite(100, 450, 'hulk', 0);
 
   player.body.setCollideWorldBounds(true);
+
+  // Foot hitbox para stomp (invisível, pequeno e sem gravidade)
+  footHitbox = this.add.rectangle(player.x, player.y + (player.height / 2), 30, 10, 0x00ffff, 0);
+  this.physics.add.existing(footHitbox);
+  footHitbox.body.setAllowGravity(false);
+  footHitbox.body.setImmovable(true);
+  footHitbox.body.setSize(30, 10);
+  footHitbox.setVisible(false);
 
   // Câmera segue o jogador de forma suave
   this.cameras.main.startFollow(player, true, 0.08, 0.08);
@@ -226,24 +241,46 @@ function create() {
   // Inimigos colidem com o chão
   this.physics.add.collider(enemies, ground);
 
-  // Colisão jogador x inimigos (dano apenas se não estiver atacando)
-  this.physics.add.collider(player, enemies, (playerObj, enemy) => {
-    if (isGameOver) return;
-    if (!enemy || !enemy.active || enemy.isDying) return;
+    // Colisão principal player x inimigo: dano lateral
+    this.physics.add.collider(player, enemies, (_playerObj, enemy) => {
+      if (!enemy || !enemy.active || enemy.isDying) return;
+      if (attackHitbox && attackHitbox.body.enable) return;
 
-    // Stomp estilo Mario: detecção mais tolerante
-    const isFalling = playerObj.body.velocity.y > 0;
-    const stompDelta = playerObj.body.bottom - enemy.body.top;
-    const fromAbove = stompDelta < 25;
-    if (isFalling && fromAbove) {
+      // Prioridade do stomp: se overlap do pé estiver ativo enquanto cai, não aplica dano.
+      const stompCandidate = player.body.velocity.y > 50 && this.physics.overlap(footHitbox, enemy);
+      if (stompCandidate) return;
+
+      // Janela curta para evitar conflito no mesmo frame entre stomp e dano.
+      if (this.time.now < stompLockUntil) return;
+
+      console.log('[StompDebug] damage trigger', {
+        playerX: player.x,
+        playerY: player.y,
+        enemyX: enemy.x,
+        enemyY: enemy.y,
+        velocityY: player.body.velocity.y
+      });
+      damagePlayer(this);
+    });
+
+    // Stomp via foot hitbox: confiável
+    this.physics.add.overlap(footHitbox, enemies, (_sensor, enemy) => {
+      if (!enemy || !enemy.active || enemy.isDying) return;
+      if (player.body.velocity.y <= 50) return;
+
+      stompLockUntil = this.time.now + 120;
+
+      console.log('[StompDebug] stomp trigger', {
+        playerX: player.x,
+        playerY: player.y,
+        enemyX: enemy.x,
+        enemyY: enemy.y,
+        velocityY: player.body.velocity.y
+      });
+
       destroyEnemyOnHit(this, enemy);
-      playerObj.body.setVelocityY(-320); // pequeno pulo de retorno
-      return;
-    }
-
-    if (attackHitbox && attackHitbox.body.enable) return;
-    damagePlayer(this);
-  });
+      player.setVelocityY(-350);
+    });
 
   cursors = this.input.keyboard.createCursorKeys();
 
@@ -335,9 +372,39 @@ function create() {
   hudBg.setOrigin(0, 0.5);
   hudBg.setScrollFactor(0);
   hudBg.setDepth(1000);
+
+  // Setup simples da musica de fundo (loop + volume)
+  if (!bgMusic) {
+    bgMusic = this.sound.add('bg-music', {
+      loop: true,
+      volume: 0.3
+    });
+  }
+
+  // Em restart de cena, se ja estiver tocando, mantem estado
+  if (bgMusic.isPlaying) {
+    musicStarted = true;
+  }
+
+  // Restricao de navegador: inicia so apos interacao do usuario
+  const startMusicOnce = () => {
+    if (musicStarted || !bgMusic) return;
+    bgMusic.play();
+    musicStarted = true;
+  };
+
+  this.input.keyboard.once('keydown', startMusicOnce);
+  this.input.once('pointerdown', startMusicOnce);
 }
 
 function update() {
+  // Mantém o foot hitbox alinhado com o jogador a cada frame
+  if (footHitbox && footHitbox.body && player && player.body) {
+    footHitbox.x = player.x;
+    footHitbox.y = player.y + (player.height / 2);
+    footHitbox.body.updateFromGameObject();
+  }
+
   if (isGameOver) {
     player.body.setVelocityX(0);
     return;
