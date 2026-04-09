@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Hulk Game</title>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
+</head>
+<body>
+
+<script>
+const config = {
+  type: Phaser.AUTO,
+  width: 800,
+  height: 600,
+  backgroundColor: '#222',
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: { y: 600 },
+      debug: true
+    }
+  },
+  scene: {
+    create,
+    update
+  }
+};
+
+let player;
+let cursors;
+
+new Phaser.Game(config);
+
+function create() {
+  // chão (verde)
+  const ground = this.add.rectangle(400, 580, 800, 40, 0x00ff00);
+  this.physics.add.existing(ground, true);
+
+  // player (vermelho)
+  player = this.add.rectangle(100, 450, 50, 50, 0xff0000);
+  this.physics.add.existing(player);
+
+  player.body.setCollideWorldBounds(true);
+
+  this.physics.add.collider(player, ground);
+
+  cursors = this.input.keyboard.createCursorKeys();
+}
+
+function update() {
+  if (cursors.left.isDown) {
+    player.body.setVelocityX(-200);
+  } else if (cursors.right.isDown) {
+    player.body.setVelocityX(200);
+  } else {
+    player.body.setVelocityX(0);
+  }
+
+  if (cursors.up.isDown && player.body.touching.down) {
+    player.body.setVelocityY(-400);
+  }
+}
+</script>
+
+</body>
+</html>
