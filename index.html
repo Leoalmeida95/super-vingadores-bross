@@ -44,19 +44,28 @@ let boss;
 let bossHealth = 5;
 let bossText;
 let bossCanTakeHit = true;
+let playerParts = {};
+let bossParts = {};
 
 new Phaser.Game(config);
 
 function create() {
+  // Fundo da cidade (camadas simples com profundidade)
+  createCityBackground(this);
+
   // chão (verde)
   const ground = this.add.rectangle(400, 580, 800, 40, 0x00ff00);
   this.physics.add.existing(ground, true);
 
-  // player (vermelho)
+  // Player físico (usado para colisão e controle)
   player = this.add.rectangle(100, 450, 50, 50, 0xff0000);
   this.physics.add.existing(player);
 
   player.body.setCollideWorldBounds(true);
+
+  // Esconde o retângulo base e cria visual estilo Hulk com formas
+  player.setVisible(false);
+  createPlayerVisual(this);
 
   this.physics.add.collider(player, ground);
 
@@ -94,7 +103,18 @@ function create() {
   // Se a hitbox tocar um inimigo, o inimigo é destruído
   this.physics.add.overlap(attackHitbox, enemies, (hitbox, enemy) => {
     if (!hitbox.body.enable || !enemy) return;
-    enemy.destroy();
+
+    // Evita hit duplo no mesmo inimigo durante o efeito
+    if (enemy.isDying) return;
+    enemy.isDying = true;
+    enemy.body.enable = false;
+
+    // Feedback visual rápido de impacto antes de remover
+    playEnemyHitEffect(this, enemy, () => {
+      if (enemy.active) {
+        enemy.destroy();
+      }
+    });
   });
 
   // Boss final (maior e roxo), no lado direito do mapa
@@ -106,6 +126,15 @@ function create() {
   boss.maxX = 780;
   boss.direction = -1;
   boss.speed = 45;
+
+  // Mantém o corpo físico do boss, mas troca para um visual mais imponente
+  boss.setVisible(false);
+  createBossVisual(this, boss);
+
+  // Remove também as partes visuais quando o boss for destruído
+  boss.on('destroy', () => {
+    destroyBossVisual();
+  });
 
   // Boss colide com o chão
   this.physics.add.collider(boss, ground);
@@ -125,10 +154,10 @@ function create() {
     bossText.setText('Boss: ' + bossHealth);
 
     // Feedback visual simples quando o boss toma dano
-    bossObj.setFillStyle(0xcc66ff);
+    setBossVisualColor(0xc77dff, 0x9d4edd);
     this.time.delayedCall(100, () => {
       if (bossObj.active) {
-        bossObj.setFillStyle(0x8a2be2);
+        setBossVisualColor(0xb565f5, 0x7b2cbf);
       }
     });
 
@@ -163,7 +192,9 @@ function create() {
     score += 1;
     scoreText.setText('Moedas: ' + score);
 
-    // Feedback simples: moeda encolhe rápido antes de sumir
+    // Feedback visual: brilho + texto + encolher rápido
+    playCoinCollectEffect(this, coin.x, coin.y);
+
     this.tweens.add({
       targets: coin,
       scaleX: 0,
@@ -176,22 +207,27 @@ function create() {
   });
 
   // HUD simples para mostrar vidas
-  livesText = this.add.text(16, 16, 'Vidas: ' + playerLives, {
+  livesText = this.add.text(20, 14, 'Vidas: ' + playerLives, {
     fontSize: '24px',
     color: '#ffffff'
   });
 
   // HUD do score de moedas
-  scoreText = this.add.text(16, 44, 'Moedas: ' + score, {
+  scoreText = this.add.text(20, 44, 'Moedas: ' + score, {
     fontSize: '24px',
     color: '#ffff66'
   });
 
   // HUD da vida do boss
-  bossText = this.add.text(16, 72, 'Boss: ' + bossHealth, {
+  bossText = this.add.text(20, 74, 'Boss: ' + bossHealth, {
     fontSize: '24px',
     color: '#dd99ff'
   });
+
+  // Fundo leve para melhorar leitura do HUD
+  const hudBg = this.add.rectangle(140, 52, 250, 96, 0x000000, 0.32);
+  hudBg.setOrigin(0, 0.5);
+  hudBg.setDepth(-1);
 }
 
 function update() {
@@ -231,6 +267,9 @@ function update() {
     }
 
     enemy.body.setVelocityX(enemy.speed * enemy.direction);
+
+    // Mantém o visual do inimigo alinhado ao corpo físico
+    updateEnemyVisual(enemy);
   });
 
   // Movimento simples do boss (vai e volta devagar)
@@ -242,7 +281,13 @@ function update() {
     }
 
     boss.body.setVelocityX(boss.speed * boss.direction);
+
+    // Mantém o visual do boss alinhado ao corpo físico
+    updateBossVisual();
   }
+
+  // Mantém o visual do personagem alinhado ao player físico
+  updatePlayerVisual();
 }
 
 // Cria um soco curto na frente do jogador
@@ -277,16 +322,15 @@ function damagePlayer(scene) {
 
   // Feedback visual: muda cor + pisca por 1 segundo
   isInvulnerable = true;
-  player.setFillStyle(0xff6666);
+  setPlayerVisualColor(0x77dd77, 0xff6666);
   scene.tweens.add({
-    targets: player,
+    targets: [playerParts.head, playerParts.body, playerParts.armLeft, playerParts.armRight, playerParts.legLeft, playerParts.legRight],
     alpha: 0.3,
     duration: 100,
     yoyo: true,
     repeat: 5,
     onComplete: () => {
-      player.alpha = 1;
-      player.setFillStyle(0xff0000);
+      setPlayerVisualColor(0x77dd77, 0x32cd32);
     }
   });
 
@@ -309,10 +353,99 @@ function damagePlayer(scene) {
   });
 }
 
+// Cria o visual do herói com várias formas (estilo Hulk)
+function createPlayerVisual(scene) {
+  playerParts.head = scene.add.circle(player.x, player.y - 24, 12, 0x77dd77);
+  playerParts.body = scene.add.rectangle(player.x, player.y + 4, 26, 30, 0x32cd32);
+  playerParts.armLeft = scene.add.rectangle(player.x - 18, player.y + 2, 10, 24, 0x2eb82e);
+  playerParts.armRight = scene.add.rectangle(player.x + 18, player.y + 2, 10, 24, 0x2eb82e);
+  playerParts.legLeft = scene.add.rectangle(player.x - 8, player.y + 24, 9, 18, 0x1f7a1f);
+  playerParts.legRight = scene.add.rectangle(player.x + 8, player.y + 24, 9, 18, 0x1f7a1f);
+}
+
+// Atualiza posição das partes visuais conforme o corpo físico
+function updatePlayerVisual() {
+  if (!playerParts.head) return;
+
+  const dir = facing === 'right' ? 1 : -1;
+
+  playerParts.head.setPosition(player.x, player.y - 24);
+  playerParts.body.setPosition(player.x, player.y + 4);
+  playerParts.armLeft.setPosition(player.x - (14 * dir), player.y + 2);
+  playerParts.armRight.setPosition(player.x + (20 * dir), player.y + 2);
+  playerParts.legLeft.setPosition(player.x - 8, player.y + 24);
+  playerParts.legRight.setPosition(player.x + 8, player.y + 24);
+}
+
+// Troca as cores do personagem para feedback visual (dano/normal)
+function setPlayerVisualColor(headColor, bodyColor) {
+  playerParts.head.setFillStyle(headColor);
+  playerParts.body.setFillStyle(bodyColor);
+  playerParts.armLeft.setFillStyle(bodyColor);
+  playerParts.armRight.setFillStyle(bodyColor);
+  playerParts.legLeft.setFillStyle(0x1f7a1f);
+  playerParts.legRight.setFillStyle(0x1f7a1f);
+
+  playerParts.head.alpha = 1;
+  playerParts.body.alpha = 1;
+  playerParts.armLeft.alpha = 1;
+  playerParts.armRight.alpha = 1;
+  playerParts.legLeft.alpha = 1;
+  playerParts.legRight.alpha = 1;
+}
+
+// Cria visual do boss com várias formas roxas (mais imponente)
+function createBossVisual(scene, bossObj) {
+  bossParts.crown = scene.add.rectangle(bossObj.x, bossObj.y - 62, 60, 12, 0x3c096c);
+  bossParts.head = scene.add.circle(bossObj.x, bossObj.y - 42, 18, 0xb565f5);
+  bossParts.body = scene.add.rectangle(bossObj.x, bossObj.y + 6, 96, 88, 0x7b2cbf);
+  bossParts.shoulderLeft = scene.add.circle(bossObj.x - 56, bossObj.y - 8, 16, 0x5a189a);
+  bossParts.shoulderRight = scene.add.circle(bossObj.x + 56, bossObj.y - 8, 16, 0x5a189a);
+  bossParts.eyeLeft = scene.add.circle(bossObj.x - 7, bossObj.y - 44, 3, 0xffffff);
+  bossParts.eyeRight = scene.add.circle(bossObj.x + 7, bossObj.y - 44, 3, 0xffffff);
+
+  updateBossVisual();
+}
+
+// Atualiza a posição das partes visuais do boss
+function updateBossVisual() {
+  if (!boss || !boss.active || !bossParts.body) return;
+
+  bossParts.crown.setPosition(boss.x, boss.y - 62);
+  bossParts.head.setPosition(boss.x, boss.y - 42);
+  bossParts.body.setPosition(boss.x, boss.y + 6);
+  bossParts.shoulderLeft.setPosition(boss.x - 56, boss.y - 8);
+  bossParts.shoulderRight.setPosition(boss.x + 56, boss.y - 8);
+  bossParts.eyeLeft.setPosition(boss.x - 7, boss.y - 44);
+  bossParts.eyeRight.setPosition(boss.x + 7, boss.y - 44);
+}
+
+// Troca cor principal do boss para feedback visual
+function setBossVisualColor(headColor, bodyColor) {
+  if (!bossParts.body) return;
+  bossParts.head.setFillStyle(headColor);
+  bossParts.body.setFillStyle(bodyColor);
+  bossParts.shoulderLeft.setFillStyle(0x5a189a);
+  bossParts.shoulderRight.setFillStyle(0x5a189a);
+}
+
+// Remove as formas visuais do boss com segurança
+function destroyBossVisual() {
+  Object.keys(bossParts).forEach((key) => {
+    if (bossParts[key]) {
+      bossParts[key].destroy();
+    }
+  });
+  bossParts = {};
+}
+
 // Função simples para criar um inimigo com patrulha horizontal
 function createEnemy(scene, x, y, minX, maxX) {
-  const enemy = scene.add.rectangle(x, y, 40, 40, 0x3366ff);
+  const enemy = scene.add.rectangle(x, y, 40, 40, 0xff3333);
   scene.physics.add.existing(enemy);
+
+  // O retângulo físico fica invisível; o visual real é feito por múltiplas formas
+  enemy.setVisible(false);
 
   enemy.body.setCollideWorldBounds(true);
   enemy.minX = minX;
@@ -320,7 +453,97 @@ function createEnemy(scene, x, y, minX, maxX) {
   enemy.speed = 80;
   enemy.direction = 1;
 
+  createEnemyVisual(scene, enemy);
+
+  // Quando o inimigo morrer, remove também as partes visuais
+  enemy.on('destroy', () => {
+    if (!enemy.visualParts) return;
+    enemy.visualParts.forEach((part) => part.destroy());
+  });
+
   enemies.add(enemy);
+}
+
+// Cria um visual mais interessante para o inimigo (corpo + olhos + pés)
+function createEnemyVisual(scene, enemy) {
+  const body = scene.add.rectangle(enemy.x, enemy.y, 34, 28, 0xcc2222);
+  const eyeLeft = scene.add.circle(enemy.x - 7, enemy.y - 3, 3, 0xffffff);
+  const eyeRight = scene.add.circle(enemy.x + 7, enemy.y - 3, 3, 0xffffff);
+  const pupilLeft = scene.add.circle(enemy.x - 7, enemy.y - 3, 1.3, 0x111111);
+  const pupilRight = scene.add.circle(enemy.x + 7, enemy.y - 3, 1.3, 0x111111);
+  const footLeft = scene.add.rectangle(enemy.x - 8, enemy.y + 15, 8, 5, 0x7a0f0f);
+  const footRight = scene.add.rectangle(enemy.x + 8, enemy.y + 15, 8, 5, 0x7a0f0f);
+
+  enemy.visualParts = [body, eyeLeft, eyeRight, pupilLeft, pupilRight, footLeft, footRight];
+
+  updateEnemyVisual(enemy);
+}
+
+// Atualiza posição das partes visuais do inimigo de acordo com o corpo físico
+function updateEnemyVisual(enemy) {
+  if (!enemy.visualParts) return;
+
+  const dir = enemy.direction || 1;
+  const eyeOffsetX = 7 * dir;
+  const pupilOffsetX = 7.8 * dir;
+
+  enemy.visualParts[0].setPosition(enemy.x, enemy.y);
+  enemy.visualParts[1].setPosition(enemy.x + eyeOffsetX, enemy.y - 3);
+  enemy.visualParts[2].setPosition(enemy.x - eyeOffsetX, enemy.y - 3);
+  enemy.visualParts[3].setPosition(enemy.x + pupilOffsetX, enemy.y - 3);
+  enemy.visualParts[4].setPosition(enemy.x - pupilOffsetX, enemy.y - 3);
+  enemy.visualParts[5].setPosition(enemy.x - 8, enemy.y + 15);
+  enemy.visualParts[6].setPosition(enemy.x + 8, enemy.y + 15);
+}
+
+// Efeito leve ao coletar moeda (sem custo alto)
+function playCoinCollectEffect(scene, x, y) {
+  const sparkle = scene.add.circle(x, y, 6, 0xfff799, 0.8);
+  const plusOne = scene.add.text(x, y - 8, '+1', {
+    fontSize: '16px',
+    color: '#ffe066'
+  }).setOrigin(0.5);
+
+  scene.tweens.add({
+    targets: sparkle,
+    scaleX: 2,
+    scaleY: 2,
+    alpha: 0,
+    duration: 130,
+    onComplete: () => sparkle.destroy()
+  });
+
+  scene.tweens.add({
+    targets: plusOne,
+    y: y - 28,
+    alpha: 0,
+    duration: 260,
+    onComplete: () => plusOne.destroy()
+  });
+}
+
+// Efeito leve ao acertar inimigo (flash + encolher)
+function playEnemyHitEffect(scene, enemy, onComplete) {
+  const effectTargets = enemy.visualParts && enemy.visualParts.length > 0
+    ? enemy.visualParts
+    : [enemy];
+
+  effectTargets.forEach((part) => {
+    if (part.setFillStyle) {
+      part.setFillStyle(0xffe066);
+    }
+  });
+
+  scene.tweens.add({
+    targets: effectTargets,
+    scaleX: 1.25,
+    scaleY: 0.7,
+    alpha: 0,
+    duration: 120,
+    onComplete: () => {
+      if (onComplete) onComplete();
+    }
+  });
 }
 
 // Função simples para criar uma moeda
@@ -333,6 +556,40 @@ function createCoin(scene, x, y) {
   coin.body.setImmovable(true);
 
   coins.add(coin);
+}
+
+// Cria um cenário de cidade leve, usando apenas formas
+function createCityBackground(scene) {
+  const width = config.width;
+  const height = config.height;
+
+  // Céu em duas faixas para dar profundidade
+  const skyTop = scene.add.rectangle(width / 2, 150, width, 300, 0x1b2a49).setDepth(-30);
+  const skyBottom = scene.add.rectangle(width / 2, 430, width, 340, 0x23395b).setDepth(-29);
+
+  // Lua
+  const moon = scene.add.circle(680, 90, 28, 0xf2f2c9).setDepth(-28);
+
+  // Camada distante de prédios (mais escura)
+  for (let x = 40; x <= width + 40; x += 90) {
+    const h = Phaser.Math.Between(120, 220);
+    scene.add.rectangle(x, 560 - h / 2, 70, h, 0x1a2238)
+      .setDepth(-27)
+      .setScrollFactor(0.9); // parallax leve
+  }
+
+  // Camada média de prédios (mais clara)
+  for (let x = 25; x <= width + 25; x += 80) {
+    const h = Phaser.Math.Between(90, 180);
+    scene.add.rectangle(x, 560 - h / 2, 52, h, 0x2f3e63)
+      .setDepth(-26)
+      .setScrollFactor(0.95); // parallax leve
+  }
+
+  // Mantém referências para evitar aviso de variáveis não usadas
+  skyTop.alpha = 1;
+  skyBottom.alpha = 1;
+  moon.alpha = 1;
 }
 </script>
 
