@@ -4,11 +4,67 @@
   <meta charset="UTF-8">
   <title>Hulk Game</title>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1b2a49;
+      font-family: Verdana, Geneva, Tahoma, sans-serif;
+    }
+
+    .game-page {
+      width: min(94vw, 980px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .game-title {
+      margin: 0;
+      font-size: clamp(32px, 5vw, 46px);
+      color: #00ff66;
+      letter-spacing: 1px;
+      text-align: center;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    #game-container {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+      background: #0f1d34;
+    }
+
+    #game-container canvas {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+  </style>
 </head>
 <body>
 
+<div class="game-page">
+  <h1 class="game-title">Super Hulk Bross</h1>
+  <div id="game-container"></div>
+</div>
+
 <script>
 const config = {
+  parent: 'game-container',
   type: Phaser.AUTO,
   width: 800,
   height: 600,
@@ -17,7 +73,7 @@ const config = {
     default: 'arcade',
     arcade: {
       gravity: { y: 600 },
-      debug: true
+      debug: false
     }
   },
   scene: {
@@ -29,6 +85,8 @@ const config = {
 
 const WORLD_WIDTH = 3000;
 const WORLD_HEIGHT = 600;
+const CONTENT_SPAWN_STEP = 400;
+const CONTENT_SPAWN_AHEAD = 500;
 
 let player;
 let cursors;
@@ -38,7 +96,7 @@ let attackHitbox;
 let canAttack = true;
 let isAttacking = false;
 let facing = 'right';
-let playerLives = 3;
+let playerLives = 5;
 let isInvulnerable = false;
 let isGameOver = false;
 let livesText;
@@ -50,7 +108,8 @@ let bossHealth = 5;
 let bossText;
 let bossCanTakeHit = true;
 let bossSpawned = false;
-let bossParts = {};
+let lastSpawnX = 0;
+let coinSpawnKeys = new Set();
 
 new Phaser.Game(config);
 
@@ -59,6 +118,12 @@ function preload() {
   this.load.spritesheet('hulk', 'assets/hulk.png', {
     frameWidth: 128,
     frameHeight: 128
+  });
+
+  // Sprite sheet do boss (Thanos-like)
+  this.load.spritesheet('thanos', 'assets/thanos.png', {
+    frameWidth: 85,
+    frameHeight: 92
   });
 }
 
@@ -69,12 +134,14 @@ function create() {
   canAttack = true;
   isAttacking = false;
   facing = 'right';
-  playerLives = 3;
+  playerLives = 5;
   score = 0;
   bossHealth = 5;
   bossCanTakeHit = true;
   bossSpawned = false;
   boss = null;
+  lastSpawnX = 400;
+  coinSpawnKeys = new Set();
 
   // Fundo da cidade (camadas simples com profundidade)
   createCityBackground(this, WORLD_WIDTH);
@@ -124,6 +191,25 @@ function create() {
     repeat: 0
   });
 
+  // Animações simples do boss
+  if (!this.anims.exists('boss-idle')) {
+    this.anims.create({
+      key: 'boss-idle',
+      frames: this.anims.generateFrameNumbers('thanos', { start: 0, end: 3 }),
+      frameRate: 5,
+      repeat: -1
+    });
+  }
+
+  if (!this.anims.exists('boss-attack')) {
+    this.anims.create({
+      key: 'boss-attack',
+      frames: this.anims.generateFrameNumbers('thanos', { start: 4, end: 7 }),
+      frameRate: 8,
+      repeat: 0
+    });
+  }
+
   // Começa parado no idle
   player.anims.play('idle');
 
@@ -145,9 +231,10 @@ function create() {
     if (isGameOver) return;
     if (!enemy || !enemy.active || enemy.isDying) return;
 
-    // Stomp estilo Mario: caindo e acertando por cima
+    // Stomp estilo Mario: detecção mais tolerante
     const isFalling = playerObj.body.velocity.y > 0;
-    const fromAbove = playerObj.body.bottom <= enemy.body.top + 12;
+    const stompDelta = playerObj.body.bottom - enemy.body.top;
+    const fromAbove = stompDelta < 25;
     if (isFalling && fromAbove) {
       destroyEnemyOnHit(this, enemy);
       playerObj.body.setVelocityY(-320); // pequeno pulo de retorno
@@ -191,7 +278,21 @@ function create() {
 
   // Coleta de moedas: some e soma +1 no score
   this.physics.add.overlap(player, coins, (playerObj, coin) => {
-    if (!coin || !coin.active) return;
+    if (!coin || !coin.active || !coin.body || !coin.body.enable) return;
+    if (coin.collected) return;
+    coin.collected = true;
+
+    const coinX = coin.x;
+    const coinY = coin.y;
+
+    // Desabilita imediatamente para contar apenas uma vez
+    if (typeof coin.disableBody === 'function') {
+      coin.disableBody(true, true);
+    } else {
+      coin.body.enable = false;
+      coin.setActive(false);
+      coin.setVisible(false);
+    }
 
     score += 1;
     scoreText.setText('Moedas: ' + score);
@@ -201,18 +302,8 @@ function create() {
       spawnBoss(this, ground);
     }
 
-    // Feedback visual: brilho + texto + encolher rápido
-    playCoinCollectEffect(this, coin.x, coin.y);
-
-    this.tweens.add({
-      targets: coin,
-      scaleX: 0,
-      scaleY: 0,
-      duration: 80,
-      onComplete: () => {
-        coin.destroy();
-      }
-    });
+    // Feedback visual simples
+    playCoinCollectEffect(this, coinX, coinY);
   });
 
   // HUD simples para mostrar vidas
@@ -310,14 +401,26 @@ function update() {
   if (boss && boss.active && boss.body && boss.body.enable) {
     if (boss.x <= boss.minX) {
       boss.direction = 1;
+      boss.setFlipX(false);
     } else if (boss.x >= boss.maxX) {
       boss.direction = -1;
+      boss.setFlipX(true);
     }
 
     boss.body.setVelocityX(boss.speed * boss.direction);
 
-    // Mantém o visual do boss alinhado ao corpo físico
-    updateBossVisual();
+    if (!boss.anims.currentAnim || boss.anims.currentAnim.key !== 'boss-idle') {
+      boss.anims.play('boss-idle', true);
+    }
+
+    // Mantém o visual sempre sincronizado com o corpo físico
+    syncBossVisualWithBody();
+  }
+
+  // Spawna mais conteúdo conforme o jogador avança pelo mapa
+  if (player.x > lastSpawnX) {
+    spawnMoreContent(this, player.x + CONTENT_SPAWN_AHEAD);
+    lastSpawnX += CONTENT_SPAWN_STEP;
   }
 
 }
@@ -408,6 +511,15 @@ function setPlayerAnimation(key) {
   player.anims.play(key, true);
 }
 
+// Sincroniza sprite do boss com o corpo físico (alinhado ao chão)
+function syncBossVisualWithBody() {
+  if (!boss || !boss.body) return;
+
+  boss.setOrigin(0.5, 1);
+  boss.x = boss.body.center.x;
+  boss.y = boss.body.bottom;
+}
+
 // Cria boss quando o jogador junta moedas suficientes
 function spawnBoss(scene, ground) {
   if (bossSpawned) return;
@@ -416,24 +528,20 @@ function spawnBoss(scene, ground) {
   bossHealth = 5;
   bossCanTakeHit = true;
 
-  // Boss final no lado direito do mapa
-  boss = scene.add.rectangle(WORLD_WIDTH - 120, 500, 70, 90, 0x8a2be2);
-  scene.physics.add.existing(boss);
+  // Boss final no lado direito do mapa (sprite)
+  boss = scene.physics.add.sprite(WORLD_WIDTH - 120, 540, 'thanos', 0);
+  boss.setOrigin(0.5, 1);
+  boss.setScale(1.7); // maior que o player
+
+  // Corpo físico alinhado ao sprite escalado (centralizado)
+  boss.body.setSize(110, 145, true);
   boss.body.setCollideWorldBounds(true);
   boss.body.setImmovable(false);
   boss.minX = WORLD_WIDTH - 260;
   boss.maxX = WORLD_WIDTH - 80;
   boss.direction = -1;
   boss.speed = 45;
-
-  // Mantém o corpo físico do boss, mas troca para um visual mais imponente
-  boss.setVisible(false);
-  createBossVisual(scene, boss);
-
-  // Remove também as partes visuais quando o boss for destruído
-  boss.on('destroy', () => {
-    destroyBossVisual();
-  });
+  boss.anims.play('boss-idle', true);
 
   // Boss colide com o chão
   scene.physics.add.collider(boss, ground);
@@ -453,10 +561,10 @@ function spawnBoss(scene, ground) {
     bossText.setText('Boss: ' + bossHealth);
 
     // Feedback visual simples quando o boss toma dano
-    setBossVisualColor(0xc77dff, 0x9d4edd);
+    bossObj.setTint(0xc77dff);
     scene.time.delayedCall(100, () => {
       if (bossObj.active) {
-        setBossVisualColor(0xb565f5, 0x7b2cbf);
+        bossObj.clearTint();
       }
     });
 
@@ -477,51 +585,6 @@ function spawnBoss(scene, ground) {
   });
 
   bossText.setText('Boss: ' + bossHealth);
-}
-
-// Cria visual do boss com várias formas roxas (mais imponente)
-function createBossVisual(scene, bossObj) {
-  bossParts.crown = scene.add.rectangle(bossObj.x, bossObj.y - 62, 60, 12, 0x3c096c);
-  bossParts.head = scene.add.circle(bossObj.x, bossObj.y - 42, 18, 0xb565f5);
-  bossParts.body = scene.add.rectangle(bossObj.x, bossObj.y + 6, 96, 88, 0x7b2cbf);
-  bossParts.shoulderLeft = scene.add.circle(bossObj.x - 56, bossObj.y - 8, 16, 0x5a189a);
-  bossParts.shoulderRight = scene.add.circle(bossObj.x + 56, bossObj.y - 8, 16, 0x5a189a);
-  bossParts.eyeLeft = scene.add.circle(bossObj.x - 7, bossObj.y - 44, 3, 0xffffff);
-  bossParts.eyeRight = scene.add.circle(bossObj.x + 7, bossObj.y - 44, 3, 0xffffff);
-
-  updateBossVisual();
-}
-
-// Atualiza a posição das partes visuais do boss
-function updateBossVisual() {
-  if (!boss || !boss.active || !bossParts.body) return;
-
-  bossParts.crown.setPosition(boss.x, boss.y - 62);
-  bossParts.head.setPosition(boss.x, boss.y - 42);
-  bossParts.body.setPosition(boss.x, boss.y + 6);
-  bossParts.shoulderLeft.setPosition(boss.x - 56, boss.y - 8);
-  bossParts.shoulderRight.setPosition(boss.x + 56, boss.y - 8);
-  bossParts.eyeLeft.setPosition(boss.x - 7, boss.y - 44);
-  bossParts.eyeRight.setPosition(boss.x + 7, boss.y - 44);
-}
-
-// Troca cor principal do boss para feedback visual
-function setBossVisualColor(headColor, bodyColor) {
-  if (!bossParts.body) return;
-  bossParts.head.setFillStyle(headColor);
-  bossParts.body.setFillStyle(bodyColor);
-  bossParts.shoulderLeft.setFillStyle(0x5a189a);
-  bossParts.shoulderRight.setFillStyle(0x5a189a);
-}
-
-// Remove as formas visuais do boss com segurança
-function destroyBossVisual() {
-  Object.keys(bossParts).forEach((key) => {
-    if (bossParts[key]) {
-      bossParts[key].destroy();
-    }
-  });
-  bossParts = {};
 }
 
 // Função simples para criar um inimigo com patrulha horizontal
@@ -651,13 +714,41 @@ function destroyEnemyOnHit(scene, enemy) {
 
 // Função simples para criar uma moeda
 function createCoin(scene, x, y) {
+  // Evita spawn de moedas na mesma posição
+  const key = Math.round(x) + ':' + Math.round(y);
+  if (coinSpawnKeys.has(key)) return;
+  coinSpawnKeys.add(key);
+
   const coin = scene.add.circle(x, y, 10, 0xffdd33);
   scene.physics.add.existing(coin, true);
 
-  // Corpo estático: moeda fica fixa (sem gravidade e sem movimento)
-  coin.body.setImmovable(true);
-
   coins.add(coin);
+}
+
+// Spawna conteúdo novo (inimigos e moedas) à frente do jogador
+function spawnMoreContent(scene, xBase) {
+  // Evita spawn fora da área útil no final do mundo
+  if (xBase > WORLD_WIDTH - 200) return;
+
+  const baseX = Phaser.Math.Clamp(xBase, 200, WORLD_WIDTH - 200);
+
+  // Inimigo principal com patrulha curta
+  const enemyX1 = Phaser.Math.Clamp(baseX + 40, 120, WORLD_WIDTH - 120);
+  createEnemy(scene, enemyX1, 520, enemyX1 - 90, enemyX1 + 90);
+
+  // Inimigo extra em blocos alternados (leve e simples)
+  const chunk = Math.floor(baseX / CONTENT_SPAWN_STEP);
+  if (chunk % 2 === 0) {
+    const enemyX2 = Phaser.Math.Clamp(baseX + 220, 120, WORLD_WIDTH - 120);
+    createEnemy(scene, enemyX2, 520, enemyX2 - 70, enemyX2 + 70);
+  }
+
+  // Moedas em alturas diferentes
+  const coinY = [520, 480, 440, 500];
+  for (let i = 0; i < coinY.length; i += 1) {
+    const coinX = Phaser.Math.Clamp(baseX + 20 + (i * 70), 80, WORLD_WIDTH - 80);
+    createCoin(scene, coinX, coinY[i]);
+  }
 }
 
 // Cria um cenário de cidade leve, usando apenas formas
