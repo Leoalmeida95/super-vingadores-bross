@@ -220,23 +220,30 @@ function create() {
     fontSize: '24px',
     color: '#ffffff'
   });
+  livesText.setScrollFactor(0);
+  livesText.setDepth(1001);
 
   // HUD do score de moedas
   scoreText = this.add.text(20, 44, 'Moedas: ' + score, {
     fontSize: '24px',
     color: '#ffff66'
   });
+  scoreText.setScrollFactor(0);
+  scoreText.setDepth(1001);
 
   // HUD da vida do boss
   bossText = this.add.text(20, 74, 'Boss: Locked', {
     fontSize: '24px',
     color: '#dd99ff'
   });
+  bossText.setScrollFactor(0);
+  bossText.setDepth(1001);
 
   // Fundo leve para melhorar leitura do HUD
   const hudBg = this.add.rectangle(140, 52, 250, 96, 0x000000, 0.32);
   hudBg.setOrigin(0, 0.5);
-  hudBg.setDepth(-1);
+  hudBg.setScrollFactor(0);
+  hudBg.setDepth(1000);
 }
 
 function update() {
@@ -654,31 +661,32 @@ function createCoin(scene, x, y) {
 }
 
 // Cria um cenário de cidade leve, usando apenas formas
-function createCityBackground(scene, sceneWidth = config.width) {
+function createCityBackground(scene, sceneWidth = WORLD_WIDTH) {
   const width = sceneWidth;
-  const height = config.height;
+  const height = WORLD_HEIGHT;
+  const cityBaseY = height - 40;
 
   // Céu em duas faixas para dar profundidade
-  const skyTop = scene.add.rectangle(width / 2, 150, width, 300, 0x1b2a49).setDepth(-30);
-  const skyBottom = scene.add.rectangle(width / 2, 430, width, 340, 0x23395b).setDepth(-29);
+  const skyTop = scene.add.rectangle(width / 2, height * 0.25, width, height * 0.5, 0x1b2a49).setDepth(-30);
+  const skyBottom = scene.add.rectangle(width / 2, height * 0.72, width, height * 0.56, 0x23395b).setDepth(-29);
 
   // Lua
-  const moon = scene.add.circle(680, 90, 28, 0xf2f2c9).setDepth(-28);
+  const moon = scene.add.circle(width * 0.85, height * 0.15, 28, 0xf2f2c9).setDepth(-28);
 
   // Camada distante de prédios (mais escura)
   for (let x = 40; x <= width + 40; x += 90) {
     const h = Phaser.Math.Between(120, 220);
-    scene.add.rectangle(x, 560 - h / 2, 70, h, 0x1a2238)
+    scene.add.rectangle(x, cityBaseY - h / 2, 70, h, 0x1a2238)
       .setDepth(-27)
-      .setScrollFactor(0.9); // parallax leve
+      .setScrollFactor(1);
   }
 
   // Camada média de prédios (mais clara)
   for (let x = 25; x <= width + 25; x += 80) {
     const h = Phaser.Math.Between(90, 180);
-    scene.add.rectangle(x, 560 - h / 2, 52, h, 0x2f3e63)
+    scene.add.rectangle(x, cityBaseY - h / 2, 52, h, 0x2f3e63)
       .setDepth(-26)
-      .setScrollFactor(0.95); // parallax leve
+      .setScrollFactor(1);
   }
 
   // Mantém referências para evitar aviso de variáveis não usadas
