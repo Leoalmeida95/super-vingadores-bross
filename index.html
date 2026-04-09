@@ -27,6 +27,9 @@ const config = {
   }
 };
 
+const WORLD_WIDTH = 3000;
+const WORLD_HEIGHT = 600;
+
 let player;
 let cursors;
 let enemies;
@@ -46,6 +49,7 @@ let boss;
 let bossHealth = 5;
 let bossText;
 let bossCanTakeHit = true;
+let bossSpawned = false;
 let bossParts = {};
 
 new Phaser.Game(config);
@@ -53,23 +57,30 @@ new Phaser.Game(config);
 function preload() {
   // Sprite sheet do Hulk (ajuste frameWidth/frameHeight depois, se precisar)
   this.load.spritesheet('hulk', 'assets/hulk.png', {
-    frameWidth: 64,
-    frameHeight: 64
+    frameWidth: 128,
+    frameHeight: 128
   });
 }
 
 function create() {
   // Fundo da cidade (camadas simples com profundidade)
-  createCityBackground(this);
+  createCityBackground(this, WORLD_WIDTH);
+
+  // Limites do mundo (nível mais largo)
+  this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+  this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
   // chão (verde)
-  const ground = this.add.rectangle(400, 580, 800, 40, 0x00ff00);
+  const ground = this.add.rectangle(WORLD_WIDTH / 2, 580, WORLD_WIDTH, 40, 0x00ff00);
   this.physics.add.existing(ground, true);
 
   // Player com sprite (mantém física e colisões)
   player = this.physics.add.sprite(100, 450, 'hulk', 0);
 
   player.body.setCollideWorldBounds(true);
+
+  // Câmera segue o jogador de forma suave
+  this.cameras.main.startFollow(player, true, 0.08, 0.08);
 
   // Animações básicas do player (ajuste os ranges depois conforme seu sprite sheet)
   this.anims.create({
@@ -117,8 +128,19 @@ function create() {
   this.physics.add.collider(enemies, ground);
 
   // Colisão jogador x inimigos (dano apenas se não estiver atacando)
-  this.physics.add.collider(player, enemies, () => {
+  this.physics.add.collider(player, enemies, (playerObj, enemy) => {
     if (isGameOver) return;
+    if (!enemy || !enemy.active || enemy.isDying) return;
+
+    // Stomp estilo Mario: caindo e acertando por cima
+    const isFalling = playerObj.body.velocity.y > 0;
+    const fromAbove = playerObj.body.bottom <= enemy.body.top + 12;
+    if (isFalling && fromAbove) {
+      destroyEnemyOnHit(this, enemy);
+      playerObj.body.setVelocityY(-320); // pequeno pulo de retorno
+      return;
+    }
+
     if (attackHitbox && attackHitbox.body.enable) return;
     damagePlayer(this);
   });
@@ -133,88 +155,21 @@ function create() {
   this.physics.add.existing(attackHitbox);
   attackHitbox.body.setAllowGravity(false);
   attackHitbox.body.setImmovable(true);
+  attackHitbox.body.setSize(42, 32);
   attackHitbox.body.enable = false;
   attackHitbox.setVisible(false);
 
   // Se a hitbox tocar um inimigo, o inimigo é destruído
   this.physics.add.overlap(attackHitbox, enemies, (hitbox, enemy) => {
-    if (!hitbox.body.enable || !enemy) return;
-
-    // Evita hit duplo no mesmo inimigo durante o efeito
-    if (enemy.isDying) return;
-    enemy.isDying = true;
-    enemy.body.enable = false;
-
-    // Feedback visual rápido de impacto antes de remover
-    playEnemyHitEffect(this, enemy, () => {
-      if (enemy.active) {
-        enemy.destroy();
-      }
-    });
+    if (!hitbox.body.enable || !enemy || !enemy.active) return;
+    destroyEnemyOnHit(this, enemy);
   });
 
-  // Boss final (maior e roxo), no lado direito do mapa
-  boss = this.add.rectangle(760, 500, 70, 90, 0x8a2be2);
-  this.physics.add.existing(boss);
-  boss.body.setCollideWorldBounds(true);
-  boss.body.setImmovable(false);
-  boss.minX = 690;
-  boss.maxX = 780;
-  boss.direction = -1;
-  boss.speed = 45;
+  // Boss nasce depois que o player coleta 5 moedas
+  boss = null;
 
-  // Mantém o corpo físico do boss, mas troca para um visual mais imponente
-  boss.setVisible(false);
-  createBossVisual(this, boss);
-
-  // Remove também as partes visuais quando o boss for destruído
-  boss.on('destroy', () => {
-    destroyBossVisual();
-  });
-
-  // Boss colide com o chão
-  this.physics.add.collider(boss, ground);
-
-  // Boss causa dano ao encostar no jogador
-  this.physics.add.collider(player, boss, () => {
-    if (!boss || !boss.active) return;
-    damagePlayer(this);
-  });
-
-  // Boss só toma dano da hitbox de ataque
-  this.physics.add.overlap(attackHitbox, boss, (hitbox, bossObj) => {
-    if (!hitbox.body.enable || !bossObj.active || !bossCanTakeHit) return;
-
-    bossCanTakeHit = false;
-    bossHealth -= 1;
-    bossText.setText('Boss: ' + bossHealth);
-
-    // Feedback visual simples quando o boss toma dano
-    setBossVisualColor(0xc77dff, 0x9d4edd);
-    this.time.delayedCall(100, () => {
-      if (bossObj.active) {
-        setBossVisualColor(0xb565f5, 0x7b2cbf);
-      }
-    });
-
-    if (bossHealth <= 0) {
-      bossObj.destroy();
-      isGameOver = true;
-      this.add.text(400, 300, 'YOU WIN', {
-        fontSize: '48px',
-        color: '#ffffff'
-      }).setOrigin(0.5);
-      return;
-    }
-
-    // Evita múltiplos hits no mesmo ataque
-    this.time.delayedCall(220, () => {
-      bossCanTakeHit = true;
-    });
-  });
-
-  // Moedas (círculos amarelos)
-  coins = this.physics.add.group();
+  // Moedas (círculos amarelos) com física estática
+  coins = this.physics.add.staticGroup();
   createCoin(this, 180, 520);
   createCoin(this, 260, 480);
   createCoin(this, 420, 520);
@@ -227,6 +182,11 @@ function create() {
 
     score += 1;
     scoreText.setText('Moedas: ' + score);
+
+    // Spawn do boss apenas uma vez quando atingir 5 moedas
+    if (score >= 5 && !bossSpawned) {
+      spawnBoss(this, ground);
+    }
 
     // Feedback visual: brilho + texto + encolher rápido
     playCoinCollectEffect(this, coin.x, coin.y);
@@ -255,7 +215,7 @@ function create() {
   });
 
   // HUD da vida do boss
-  bossText = this.add.text(20, 74, 'Boss: ' + bossHealth, {
+  bossText = this.add.text(20, 74, 'Boss: Locked', {
     fontSize: '24px',
     color: '#dd99ff'
   });
@@ -295,17 +255,17 @@ function update() {
 
   // Controle simples de animações baseado no estado atual
   const onGround = player.body.touching.down || player.body.blocked.down;
+  const movingX = player.body.velocity.x !== 0;
 
+  // Prioridade: attack > jump > run > idle
   if (isAttacking) {
-    if (!player.anims.currentAnim || player.anims.currentAnim.key !== 'attack') {
-      player.anims.play('attack', true);
-    }
+    setPlayerAnimation('attack');
   } else if (!onGround) {
-    player.anims.play('jump', true);
-  } else if (Math.abs(player.body.velocity.x) > 5) {
-    player.anims.play('run', true);
+    setPlayerAnimation('jump');
+  } else if (movingX) {
+    setPlayerAnimation('run');
   } else {
-    player.anims.play('idle', true);
+    setPlayerAnimation('idle');
   }
 
   // Movimento automático esquerda/direita dos inimigos
@@ -347,14 +307,20 @@ function performAttack(scene) {
   isAttacking = true;
 
   // Força animação de ataque no momento do soco
-  player.anims.play('attack', true);
+  setPlayerAnimation('attack');
 
   // Direção do soco: aparece na frente do player
-  const offsetX = facing === 'right' ? 40 : -40;
-  attackHitbox.setPosition(player.x + offsetX, player.y);
+  const offsetX = facing === 'right' ? 52 : -52;
+  attackHitbox.setPosition(player.body.center.x + offsetX, player.body.center.y + 10);
   attackHitbox.setVisible(true);
   attackHitbox.body.enable = true;
   attackHitbox.body.updateFromGameObject();
+
+  // Garante detecção imediata no mesmo frame do ataque
+  scene.physics.overlap(attackHitbox, enemies, (hitbox, enemy) => {
+    if (!hitbox.body.enable || !enemy || !enemy.active) return;
+    destroyEnemyOnHit(scene, enemy);
+  });
 
   // Hitbox some rapidamente
   scene.time.delayedCall(200, () => {
@@ -412,6 +378,84 @@ function damagePlayer(scene) {
   scene.time.delayedCall(1000, () => {
     isInvulnerable = false;
   });
+}
+
+// Toca animação apenas quando necessário (evita troca/restart a cada frame)
+function setPlayerAnimation(key) {
+  if (!player || !player.anims) return;
+  if (player.anims.currentAnim && player.anims.currentAnim.key === key) return;
+  player.anims.play(key, true);
+}
+
+// Cria boss quando o jogador junta moedas suficientes
+function spawnBoss(scene, ground) {
+  if (bossSpawned) return;
+  bossSpawned = true;
+
+  bossHealth = 5;
+  bossCanTakeHit = true;
+
+  // Boss final no lado direito do mapa
+  boss = scene.add.rectangle(WORLD_WIDTH - 120, 500, 70, 90, 0x8a2be2);
+  scene.physics.add.existing(boss);
+  boss.body.setCollideWorldBounds(true);
+  boss.body.setImmovable(false);
+  boss.minX = WORLD_WIDTH - 260;
+  boss.maxX = WORLD_WIDTH - 80;
+  boss.direction = -1;
+  boss.speed = 45;
+
+  // Mantém o corpo físico do boss, mas troca para um visual mais imponente
+  boss.setVisible(false);
+  createBossVisual(scene, boss);
+
+  // Remove também as partes visuais quando o boss for destruído
+  boss.on('destroy', () => {
+    destroyBossVisual();
+  });
+
+  // Boss colide com o chão
+  scene.physics.add.collider(boss, ground);
+
+  // Boss causa dano ao encostar no jogador
+  scene.physics.add.collider(player, boss, () => {
+    if (!boss || !boss.active) return;
+    damagePlayer(scene);
+  });
+
+  // Boss só toma dano da hitbox de ataque
+  scene.physics.add.overlap(attackHitbox, boss, (hitbox, bossObj) => {
+    if (!hitbox.body.enable || !bossObj.active || !bossCanTakeHit) return;
+
+    bossCanTakeHit = false;
+    bossHealth -= 1;
+    bossText.setText('Boss: ' + bossHealth);
+
+    // Feedback visual simples quando o boss toma dano
+    setBossVisualColor(0xc77dff, 0x9d4edd);
+    scene.time.delayedCall(100, () => {
+      if (bossObj.active) {
+        setBossVisualColor(0xb565f5, 0x7b2cbf);
+      }
+    });
+
+    if (bossHealth <= 0) {
+      bossObj.destroy();
+      isGameOver = true;
+      scene.add.text(400, 300, 'YOU WIN', {
+        fontSize: '48px',
+        color: '#ffffff'
+      }).setOrigin(0.5);
+      return;
+    }
+
+    // Evita múltiplos hits no mesmo ataque
+    scene.time.delayedCall(220, () => {
+      bossCanTakeHit = true;
+    });
+  });
+
+  bossText.setText('Boss: ' + bossHealth);
 }
 
 // Cria visual do boss com várias formas roxas (mais imponente)
@@ -566,21 +610,38 @@ function playEnemyHitEffect(scene, enemy, onComplete) {
   });
 }
 
+// Remove inimigo ao levar hit da hitbox de ataque
+function destroyEnemyOnHit(scene, enemy) {
+  // Evita hit duplo no mesmo inimigo durante o efeito
+  if (enemy.isDying) return;
+  enemy.isDying = true;
+
+  if (enemy.body) {
+    enemy.body.enable = false;
+  }
+
+  // Feedback visual rápido de impacto antes de remover
+  playEnemyHitEffect(scene, enemy, () => {
+    if (enemy.active) {
+      enemy.destroy();
+    }
+  });
+}
+
 // Função simples para criar uma moeda
 function createCoin(scene, x, y) {
   const coin = scene.add.circle(x, y, 10, 0xffdd33);
-  scene.physics.add.existing(coin);
+  scene.physics.add.existing(coin, true);
 
-  // Moeda não sofre gravidade e fica parada no mapa
-  coin.body.setAllowGravity(false);
+  // Corpo estático: moeda fica fixa (sem gravidade e sem movimento)
   coin.body.setImmovable(true);
 
   coins.add(coin);
 }
 
 // Cria um cenário de cidade leve, usando apenas formas
-function createCityBackground(scene) {
-  const width = config.width;
+function createCityBackground(scene, sceneWidth = config.width) {
+  const width = sceneWidth;
   const height = config.height;
 
   // Céu em duas faixas para dar profundidade
