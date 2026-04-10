@@ -8,12 +8,76 @@ const WORLD_HEIGHT = 600;
 const CONTENT_SPAWN_STEP = 400;
 const CONTENT_SPAWN_AHEAD = 500;
 const GROUND_COLLISION_CENTER_Y = 596;
+let currentPhase = 1;
 let score = 0;
 let coinsCollectedTotal = 0;
 let lastLifeMilestone = 0;
+let bossSpawned = false;
 let scoreText;
+let phaseText;
 let bgMusic;
 let musicStarted = false;
+
+function startPhase(scene, phaseNumber) {
+  currentPhase = phaseNumber;
+  scene.currentPhase = currentPhase;
+
+  scene.physics.resume();
+
+  score = 0;
+  coinsCollectedTotal = 0;
+  lastLifeMilestone = 0;
+  bossSpawned = false;
+
+  scene.player.lives = 10;
+  scene.player.isGameOver = false;
+  scene.player.isInvulnerable = false;
+  scene.player.sprite.setPosition(100, 450);
+  scene.player.sprite.setVelocity(0, 0);
+
+  scene.enemyManager.getGroup().clear(true, true);
+  scene.enemyManager.instances = [];
+
+  scene.coinManager.group.clear(true, true);
+  scene.coinManager.spawnKeys.clear();
+
+  scene.lastSpawnX = 400;
+
+  if (scene.boss) {
+    if (scene.boss.sprite) {
+      scene.boss.sprite.destroy();
+      scene.boss.sprite = null;
+    }
+    if (scene.boss.physicsBody) {
+      scene.boss.physicsBody.destroy();
+      scene.boss.physicsBody = null;
+    }
+    if (scene.boss.attackHitbox) {
+      scene.boss.attackHitbox.destroy();
+      scene.boss.attackHitbox = null;
+    }
+
+    scene.boss.spawned = false;
+    scene.boss.isDead = false;
+    scene.boss.isAttacking = false;
+    scene.boss.isDefending = false;
+    scene.boss.canAttack = true;
+    scene.boss.maxLife = 20 + (currentPhase * 5);
+    scene.boss.life = scene.boss.maxLife;
+    scene.boss.lifeBg.setVisible(false);
+    scene.boss.lifeBar.setVisible(false);
+    scene.boss.lifeBar.width = 300;
+    scene.boss.lifeBar.setFillStyle(0x00ff00);
+  }
+
+  scene.enemyManager.createInitial();
+  scene.enemyManager.setPhaseDifficulty(currentPhase);
+  scene.coinManager.createInitial();
+
+  scene.player.livesText.setText('Vidas: ' + scene.player.lives);
+  scoreText.setText('Moedas: ' + score);
+  phaseText.setText('Fase ' + currentPhase);
+}
 
 class GameScene extends Phaser.Scene {
   constructor() {
@@ -49,9 +113,6 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
-    score = 0;
-    coinsCollectedTotal = 0;
-    lastLifeMilestone = 0;
     this.lastSpawnX = 400;
 
     const bgKey = 'bg' + Phaser.Math.Between(1, 5);
@@ -77,7 +138,6 @@ class GameScene extends Phaser.Scene {
     this.boss = new Boss(this);
 
     this.enemyManager = new EnemyManager(this, ground);
-    this.enemyManager.createInitial();
 
     this.coinManager = new Coin(this, () => {
       score += 1;
@@ -89,7 +149,8 @@ class GameScene extends Phaser.Scene {
         this.player.addLife();
       }
 
-      if (coinsCollectedTotal === 50 && !this.boss.spawned) {
+      if (coinsCollectedTotal >= 50 && !bossSpawned) {
+        bossSpawned = true;
         const warning = this.add.text(400, 200, '⚠️ Thanos está chegando!', {
           fontSize: '32px',
           color: '#ff4444',
@@ -112,8 +173,6 @@ class GameScene extends Phaser.Scene {
       }
     });
 
-    this.coinManager.createInitial();
-
     this.player.setupColliders(ground, this.enemyManager.getGroup(), {
       onEnemyDestroyed: (sprite) => this.enemyManager.handleEnemyDestroyed(sprite)
     });
@@ -126,10 +185,26 @@ class GameScene extends Phaser.Scene {
     scoreText.setScrollFactor(0);
     scoreText.setDepth(1001);
 
+    phaseText = this.add.text(400, 100, 'Fase ' + currentPhase, {
+      fontSize: '36px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    });
+    phaseText.setOrigin(0.5);
+    phaseText.setScrollFactor(0);
+    phaseText.setDepth(1001);
+
     const hudBg = this.add.rectangle(0, 0, 250, 76, 0x000000, 0.32);
     hudBg.setOrigin(0, 0);
     hudBg.setScrollFactor(0);
     hudBg.setDepth(1000);
+
+    this.startPhase = (phaseNumber) => {
+      currentPhase = phaseNumber;
+      startPhase(this, currentPhase);
+    };
+
+    this.startPhase(currentPhase);
 
     if (!bgMusic) {
       bgMusic = this.sound.add('bg-music', {

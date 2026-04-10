@@ -271,6 +271,13 @@ export default class Boss {
         delay: 300,
         ease: 'Linear'
       });
+
+      this.scene.time.delayedCall(2000, () => {
+        if (typeof this.scene.startPhase === 'function') {
+          const nextPhase = (this.scene.currentPhase || 1) + 1;
+          this.scene.startPhase(nextPhase);
+        }
+      });
     });
 
     this.scene.time.delayedCall(1500, () => {

@@ -571,6 +571,10 @@ export default class Player {
       }).setOrigin(0.5);
 
       scene.time.delayedCall(1500, () => {
+        if (typeof scene.startPhase === 'function') {
+          scene.startPhase(1);
+          return;
+        }
         scene.scene.restart();
       });
       return;
