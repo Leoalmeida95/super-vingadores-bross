@@ -12,7 +12,6 @@ export default class Player {
     this.stompGraceMs = 120;
     this.currentAttackAnimKey = null;
     this.currentAttackHits = new WeakSet();
-    this.attackAnimationCount = 4;
     this.jumpVelocity = -400;
     this.doubleJumpVelocity = -380;
     this.hasUsedDoubleJump = false;
@@ -78,15 +77,14 @@ export default class Player {
 
   _createAnimations(scene) {
     const hulkTexture = scene.textures.get('hulk');
-    const hulkSourceImage = hulkTexture ? hulkTexture.getSourceImage() : null;
-    const hulkFrameZero = scene.textures.getFrame('hulk', 0);
-    const frameWidth = hulkFrameZero ? hulkFrameZero.cutWidth : 0;
-    const frameHeight = hulkFrameZero ? hulkFrameZero.cutHeight : 0;
-    const textureWidth = hulkSourceImage ? hulkSourceImage.width : 0;
-    const textureHeight = hulkSourceImage ? hulkSourceImage.height : 0;
+    const texture = hulkTexture ? hulkTexture.getSourceImage() : null;
+    const frameWidth = 128;
+    const frameHeight = 128;
+    const textureWidth = texture ? texture.width : 0;
+    const textureHeight = texture ? texture.height : 0;
     const framesPerRow = frameWidth > 0 ? Math.floor(textureWidth / frameWidth) : 0;
-    const rowCount = frameHeight > 0 ? Math.floor(textureHeight / frameHeight) : 0;
-    const lastRowIndex = rowCount > 0 ? rowCount - 1 : 0;
+    const totalRows = frameHeight > 0 ? Math.floor(textureHeight / frameHeight) : 0;
+    const lastRowIndex = totalRows > 0 ? totalRows - 1 : 0;
 
     if (!scene.anims.exists('idle')) {
       scene.anims.create({
@@ -115,42 +113,18 @@ export default class Player {
       });
     }
 
-    if (framesPerRow > 0 && !scene.anims.exists('hulk_attack_1')) {
-      const row5 = this._getFramesFromRow(5, framesPerRow);
+    if (framesPerRow > 0 && !scene.anims.exists('hulk_attack')) {
+      // Fallback one row above the last to avoid empty/invalid trailing rows.
+      const attackRowIndex = Math.max(0, lastRowIndex - 1);
+      const lastRow = this._getFramesFromRow(attackRowIndex, framesPerRow);
+      const attackFrames = {
+        start: lastRow.start,
+        end: Math.min(lastRow.start + 5, lastRow.end)
+      };
       scene.anims.create({
-        key: 'hulk_attack_1',
-        frames: scene.anims.generateFrameNumbers('hulk', row5),
-        frameRate: 16,
-        repeat: 0
-      });
-    }
-
-    if (framesPerRow > 0 && !scene.anims.exists('hulk_attack_2')) {
-      const row8 = this._getFramesFromRow(8, framesPerRow);
-      scene.anims.create({
-        key: 'hulk_attack_2',
-        frames: scene.anims.generateFrameNumbers('hulk', row8),
-        frameRate: 16,
-        repeat: 0
-      });
-    }
-
-    if (framesPerRow > 0 && !scene.anims.exists('hulk_attack_3')) {
-      const row9 = this._getFramesFromRow(9, framesPerRow);
-      scene.anims.create({
-        key: 'hulk_attack_3',
-        frames: scene.anims.generateFrameNumbers('hulk', row9),
-        frameRate: 16,
-        repeat: 0
-      });
-    }
-
-    if (framesPerRow > 0 && rowCount > 0 && !scene.anims.exists('hulk_attack_4')) {
-      const lastRow = this._getFramesFromRow(lastRowIndex, framesPerRow);
-      scene.anims.create({
-        key: 'hulk_attack_4',
-        frames: scene.anims.generateFrameNumbers('hulk', lastRow),
-        frameRate: 16,
+        key: 'hulk_attack',
+        frames: scene.anims.generateFrameNumbers('hulk', attackFrames),
+        frameRate: 14,
         repeat: 0
       });
     }
@@ -278,6 +252,11 @@ export default class Player {
       this.sprite.body.setVelocityX(0);
     }
 
+      if (this.isAttacking) {
+        this._ensureSpriteVisible();
+        this.sprite.setVisible(true);
+        this.sprite.setAlpha(1);
+      }
     let isMovingByInput = false;
 
     if (!this.isUsingSpecial && this.cursors.left.isDown) {
@@ -326,14 +305,14 @@ export default class Player {
     const onGround = this.sprite.body.touching.down || this.sprite.body.blocked.down;
     const movingX = isMovingByInput;
 
+    if (this.isAttacking) {
+      return;
+    }
+
     if (this.isUsingSpecial) {
       if (this._specialVisualSprite) {
         this._specialVisualSprite.x = this.sprite.body.center.x;
         this._specialVisualSprite.y = this.sprite.body.bottom;
-      }
-    } else if (this.isAttacking) {
-      if (this.currentAttackAnimKey) {
-        this.playPlayerAnimation(this.currentAttackAnimKey);
       }
     } else if (!onGround) {
       this.playPlayerAnimation('jump');
@@ -354,9 +333,15 @@ export default class Player {
     this.currentAttackHits = new WeakSet();
     this.attackAlreadyHitBoss = false;
 
-    const attackIndex = Phaser.Math.Between(1, this.attackAnimationCount);
-    this.currentAttackAnimKey = 'hulk_attack_' + attackIndex;
-    this.playPlayerAnimation(this.currentAttackAnimKey);
+    const attackKey = 'hulk_attack';
+    if (!this.scene.anims.exists(attackKey)) {
+      this.isAttacking = false;
+      this.canAttack = true;
+      this.currentAttackAnimKey = null;
+      return;
+    }
+    this.currentAttackAnimKey = attackKey;
+    this.playPlayerAnimation(attackKey);
 
     // Ensure no previous attack hitbox state leaks into this attack.
     this.attackHitbox.body.enable = false;
@@ -394,16 +379,13 @@ export default class Player {
       this.attackHitbox.setVisible(false);
     });
 
-    scene.time.delayedCall(300, () => {
+    this.sprite.once('animationcomplete-' + attackKey, () => {
       this.isAttacking = false;
+      this.canAttack = true;
       this.currentAttackAnimKey = null;
       if (!this.isUsingSpecial) {
         this._ensureSpriteVisible();
       }
-    });
-
-    scene.time.delayedCall(400, () => {
-      this.canAttack = true;
     });
   }
 
