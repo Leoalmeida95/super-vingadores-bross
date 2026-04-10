@@ -127,6 +127,8 @@ let coinSpawnKeys = new Set();
 let bgMusic;
 let musicStarted = false;
 let stompLockUntil = 0;
+let bossLifeBg;
+let bossLifeBar;
 
 new Phaser.Game(config);
 
@@ -523,6 +525,19 @@ function create() {
   hudBg.setScrollFactor(0);
   hudBg.setDepth(1000);
 
+  // Barra de vida do boss (inicialmente oculta)
+  bossLifeBg = this.add.rectangle(400, 30, 300, 20, 0x550000);
+  bossLifeBg.setScrollFactor(0);
+  bossLifeBg.setDepth(1001);
+  bossLifeBg.setOrigin(0.5);
+  bossLifeBg.setVisible(false);
+
+  bossLifeBar = this.add.rectangle(400, 30, 300, 20, 0x00ff00);
+  bossLifeBar.setScrollFactor(0);
+  bossLifeBar.setDepth(1002);
+  bossLifeBar.setOrigin(0.5);
+  bossLifeBar.setVisible(false);
+
   // Setup simples da musica de fundo (loop + volume)
   if (!bgMusic) {
     bgMusic = this.sound.add('bg-music', {
@@ -631,7 +646,7 @@ function update(time, delta) {
   }
 
   // Sync visual do boss com o corpo físico
-  if (boss && bossSprite) {
+  if (boss && bossSprite && !boss.bossIsDead) {
     const distance = player.x - boss.x;
     const absDistance = Math.abs(distance);
 
@@ -824,6 +839,9 @@ function spawnBoss(scene) {
   boss.bossIsAttacking = false;
   boss.bossCanAttack = true;
   boss.bossAttackCooldown = 2000;
+  boss.bossLife = 20;
+  boss.bossMaxLife = 20;
+  boss.bossIsDead = false;
   boss.body.setVelocityX(0);
 
   // Hitbox de ataque do boss (invisível)
@@ -839,6 +857,12 @@ function spawnBoss(scene) {
     damagePlayer(scene);
   });
 
+  // Ataque do player (Hulk) acerta o boss
+  scene.physics.add.overlap(attackHitbox, boss, (hitbox, b) => {
+    if (!hitbox.body.enable || !boss || boss.bossIsDead) return;
+    damageBoss(scene, 1);
+  });
+
   // Visual do boss (sprite para tocar animações)
   const initialFrameKey = thanosAnimations.idle[0] || 'thanos_idle';
   bossSprite = scene.add.sprite(x, y, initialFrameKey);
@@ -849,6 +873,65 @@ function spawnBoss(scene) {
   bossSprite.y = boss.y + BOSS_VISUAL_Y_ADJUST;
 
   playThanosAnimation(bossSprite, 'idle');
+
+  if (bossLifeBg) bossLifeBg.setVisible(true);
+  if (bossLifeBar) bossLifeBar.setVisible(true);
+}
+
+function updateBossLifeBar() {
+  if (!boss || boss.bossIsDead || !bossLifeBar) return;
+  const lifePercent = boss.bossLife / boss.bossMaxLife;
+  bossLifeBar.width = 300 * lifePercent;
+
+  if (lifePercent > 0.5) {
+    bossLifeBar.setFillStyle(0x00ff00);
+  } else if (lifePercent > 0.25) {
+    bossLifeBar.setFillStyle(0xffff00);
+  } else {
+    bossLifeBar.setFillStyle(0xff3300);
+  }
+}
+
+function damageBoss(scene, damage) {
+  if (!boss || boss.bossIsDead) return;
+
+  boss.bossLife -= damage;
+  boss.body.setVelocityX(0);
+
+  bossSprite.setTint(0xff0000);
+  scene.time.delayedCall(100, () => {
+    if (bossSprite) bossSprite.clearTint();
+  });
+
+  playThanosAnimation(bossSprite, 'hit');
+  updateBossLifeBar();
+
+  if (boss.bossLife <= 0) {
+    killBoss(scene);
+  }
+}
+
+function killBoss(scene) {
+  if (!boss) return;
+  boss.bossIsDead = true;
+  boss.bossIsAttacking = false;
+  boss.body.setVelocity(0, 0);
+  boss.body.enable = false;
+
+  if (bossAttackHitbox && bossAttackHitbox.body) {
+    bossAttackHitbox.body.enable = false;
+  }
+
+  playThanosAnimation(bossSprite, 'death');
+
+  if (bossLifeBg) bossLifeBg.setVisible(false);
+  if (bossLifeBar) bossLifeBar.setVisible(false);
+
+  scene.time.delayedCall(1500, () => {
+    if (bossSprite) { bossSprite.destroy(); bossSprite = null; }
+    if (boss) { boss.destroy(); boss = null; }
+    if (bossAttackHitbox) { bossAttackHitbox.destroy(); bossAttackHitbox = null; }
+  });
 }
 
 // Função simples para criar um inimigo com patrulha horizontal
