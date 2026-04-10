@@ -10,6 +10,7 @@ export default class Enemy {
     this.sprite = scene.physics.add.sprite(x, y, 'enemy', 0);
     this.sprite.setOrigin(0.5, 1);
     this.sprite.body.setSize(34, 40, true);
+    this.sprite.body.enable = true;
     this.sprite.body.setCollideWorldBounds(true);
     this.sprite.anims.play('enemy-walk', true);
 

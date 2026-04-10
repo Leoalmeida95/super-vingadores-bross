@@ -10,6 +10,10 @@ export default class Player {
     this.debugStomp = false;
     this.lastFallingAt = -99999;
     this.stompGraceMs = 120;
+    this.currentAttackAnimKey = null;
+    this.currentAttackHits = new WeakSet();
+    this.enemyGroup = null;
+    this.onEnemyDestroyed = null;
 
     this.sprite = scene.physics.add.sprite(100, 450, 'hulk', 0);
     this.sprite.body.setCollideWorldBounds(true);
@@ -78,10 +82,28 @@ export default class Player {
       });
     }
 
-    if (!scene.anims.exists('attack')) {
+    if (!scene.anims.exists('hulk_attack_1')) {
       scene.anims.create({
-        key: 'attack',
-        frames: scene.anims.generateFrameNumbers('hulk', { start: 16, end: 21 }),
+        key: 'hulk_attack_1',
+        frames: scene.anims.generateFrameNumbers('hulk', { start: 32, end: 39 }),
+        frameRate: 16,
+        repeat: 0
+      });
+    }
+
+    if (!scene.anims.exists('hulk_attack_2')) {
+      scene.anims.create({
+        key: 'hulk_attack_2',
+        frames: scene.anims.generateFrameNumbers('hulk', { start: 56, end: 63 }),
+        frameRate: 16,
+        repeat: 0
+      });
+    }
+
+    if (!scene.anims.exists('hulk_attack_3')) {
+      scene.anims.create({
+        key: 'hulk_attack_3',
+        frames: scene.anims.generateFrameNumbers('hulk', { start: 64, end: 71 }),
         frameRate: 16,
         repeat: 0
       });
@@ -91,6 +113,8 @@ export default class Player {
   setupColliders(ground, enemies, callbacks) {
     const scene = this.scene;
     const { onEnemyDestroyed } = callbacks;
+    this.enemyGroup = enemies;
+    this.onEnemyDestroyed = onEnemyDestroyed;
 
     scene.physics.add.collider(this.sprite, ground);
 
@@ -124,7 +148,7 @@ export default class Player {
 
     scene.physics.add.overlap(this.attackHitbox, enemies, (hitbox, enemy) => {
       if (!hitbox.body.enable || !enemy || !enemy.active) return;
-      onEnemyDestroyed(enemy);
+      this._tryAttackEnemyHit(enemy);
     });
 
   }
@@ -169,7 +193,9 @@ export default class Player {
     const movingX = this.sprite.body.velocity.x !== 0;
 
     if (this.isAttacking) {
-      this._setAnimation('attack');
+      if (this.currentAttackAnimKey) {
+        this._setAnimation(this.currentAttackAnimKey);
+      }
     } else if (!onGround) {
       this._setAnimation('jump');
     } else if (movingX) {
@@ -181,32 +207,72 @@ export default class Player {
 
   attack() {
     const scene = this.scene;
+    if (this.isAttacking || !this.canAttack) return;
 
     this.canAttack = false;
     this.isAttacking = true;
-    this._setAnimation('attack');
+    this.currentAttackHits = new WeakSet();
 
-    const offsetX = this.facing === 'right' ? 52 : -52;
+    const attackIndex = Phaser.Math.Between(1, 3);
+    this.currentAttackAnimKey = 'hulk_attack_' + attackIndex;
+    this.sprite.anims.play(this.currentAttackAnimKey, true);
+
+    const offsetX = this.facing === 'right' ? 64 : -64;
     this.attackHitbox.setPosition(
       this.sprite.body.center.x + offsetX,
       this.sprite.body.center.y + 10
     );
     this.attackHitbox.setVisible(true);
+    this.attackHitbox.body.setSize(58, 36);
     this.attackHitbox.body.enable = true;
     this.attackHitbox.body.updateFromGameObject();
+
+    // Forca uma checagem imediata para nao perder o hit no frame inicial do ataque.
+    if (this.enemyGroup) {
+      scene.physics.overlap(this.attackHitbox, this.enemyGroup, (hitbox, enemy) => {
+        if (!enemy || !enemy.active) return;
+        this._tryAttackEnemyHit(enemy);
+      });
+    }
 
     scene.time.delayedCall(200, () => {
       this.attackHitbox.body.enable = false;
       this.attackHitbox.setVisible(false);
     });
 
-    scene.time.delayedCall(220, () => {
+    const finishAttack = () => {
+      if (!this.isAttacking) return;
       this.isAttacking = false;
+      this.canAttack = true;
+      this.currentAttackAnimKey = null;
+    };
+
+    this.sprite.once('animationcomplete', (anim) => {
+      if (this.currentAttackAnimKey && anim.key === this.currentAttackAnimKey) {
+        finishAttack();
+      }
     });
 
-    scene.time.delayedCall(300, () => {
-      this.canAttack = true;
-    });
+    scene.time.delayedCall(650, finishAttack);
+  }
+
+  _consumeAttackHit(target) {
+    if (!target) return false;
+    if (!this.attackHitbox || !this.attackHitbox.body || !this.attackHitbox.body.enable) return false;
+    if (!this.isAttacking) return false;
+    if (this.currentAttackHits.has(target)) return false;
+
+    this.currentAttackHits.add(target);
+    return true;
+  }
+
+  _tryAttackEnemyHit(enemy) {
+    if (!enemy || !enemy.active) return;
+    if (!this.onEnemyDestroyed) return;
+    if (!this._consumeAttackHit(enemy)) return;
+
+    console.log('HIT DETECTADO', enemy);
+    this.onEnemyDestroyed(enemy);
   }
 
   takeDamage() {

@@ -278,6 +278,7 @@ export default class Boss {
 
     this.scene.physics.add.overlap(player.attackHitbox, this.physicsBody, (hitbox) => {
       if (!hitbox.body.enable || this.isDead) return;
+      if (!player._consumeAttackHit(this.physicsBody)) return;
       this.takeDamage(1);
     });
 
