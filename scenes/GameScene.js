@@ -31,6 +31,11 @@ class GameScene extends Phaser.Scene {
       frameHeight: 128
     });
 
+    this.load.spritesheet('hulk_special_sheet', 'assets/hulk.png', {
+      frameWidth: 128,
+      frameHeight: 256
+    });
+
     this.load.spritesheet('enemy', 'assets/enemy.png', {
       frameWidth: 32,
       frameHeight: 40

@@ -17,6 +17,7 @@ export default class Player {
     this.canUseSpecial = true;
     this.specialCooldown = 3000;
     this.currentSpecialHits = new WeakSet();
+    this._specialVisualSprite = null;
     this.bossPhysicsBody = null;
     this.onBossAttackHit = null;
     this.attackAlreadyHitBoss = false;
@@ -169,6 +170,17 @@ export default class Player {
         repeat: 0
       });
     }
+
+    if (framesPerRow > 0 && !scene.anims.exists('hulk_special_tall')) {
+      // Row 6 in the 256px sheet = row 12 in the 128px sheet (same pixel offset)
+      const tallRow = this._getFramesFromRow(6, framesPerRow);
+      scene.anims.create({
+        key: 'hulk_special_tall',
+        frames: scene.anims.generateFrameNumbers('hulk_special_sheet', tallRow),
+        frameRate: 14,
+        repeat: 0
+      });
+    }
   }
 
   _getFramesFromRow(rowIndex, framesPerRow) {
@@ -292,7 +304,10 @@ export default class Player {
     const movingX = this.sprite.body.velocity.x !== 0;
 
     if (this.isUsingSpecial) {
-      this._setAnimation('hulk_special');
+      if (this._specialVisualSprite) {
+        this._specialVisualSprite.x = this.sprite.body.center.x;
+        this._specialVisualSprite.y = this.sprite.body.bottom;
+      }
     } else if (this.isAttacking) {
       if (this.currentAttackAnimKey) {
         this._setAnimation(this.currentAttackAnimKey);
@@ -376,8 +391,20 @@ export default class Player {
     this.canAttack = false;
     this.currentSpecialHits = new WeakSet();
 
+    const origAlpha = this.sprite.alpha;
+    this.sprite.setAlpha(0);
+
+    this._specialVisualSprite = scene.add.sprite(
+      this.sprite.body.center.x,
+      this.sprite.body.bottom,
+      'hulk_special_sheet'
+    );
+    this._specialVisualSprite.setOrigin(0.5, 1);
+    this._specialVisualSprite.setDepth(this.sprite.depth + 1);
+    this._specialVisualSprite.setFlipX(this.facing === 'left');
+    this._specialVisualSprite.anims.play('hulk_special_tall', true);
+
     this.sprite.body.setVelocityX(0);
-    this.sprite.anims.play('hulk_special', true);
 
     scene.time.delayedCall(200, () => {
       if (!this.isUsingSpecial || this.isGameOver) return;
@@ -426,6 +453,11 @@ export default class Player {
     scene.time.delayedCall(600, () => {
       this.isUsingSpecial = false;
       this.canAttack = true;
+      this.sprite.setAlpha(origAlpha);
+      if (this._specialVisualSprite) {
+        this._specialVisualSprite.destroy();
+        this._specialVisualSprite = null;
+      }
     });
 
     scene.time.delayedCall(this.specialCooldown, () => {
