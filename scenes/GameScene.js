@@ -1,4 +1,5 @@
 import Player from '../entities/Player.js';
+import Enemy from '../entities/Enemy.js';
 
 const WORLD_WIDTH = 3000;
 const WORLD_HEIGHT = 600;
@@ -6,6 +7,7 @@ const CONTENT_SPAWN_STEP = 400;
 const CONTENT_SPAWN_AHEAD = 500;
 
 let enemies;
+let enemyInstances = [];
 let coins;
 let score = 0;
 let scoreText;
@@ -318,21 +320,6 @@ function killBoss(scene) {
   });
 }
 
-function createEnemy(scene, x, y, minX, maxX) {
-  const enemy = scene.physics.add.sprite(x, y, 'enemy', 0);
-  enemy.setOrigin(0.5, 1);
-  enemy.body.setSize(34, 40, true);
-  enemy.anims.play('enemy-walk', true);
-
-  enemy.body.setCollideWorldBounds(true);
-  enemy.minX = minX;
-  enemy.maxX = maxX;
-  enemy.speed = 80;
-  enemy.direction = 1;
-
-  enemies.add(enemy);
-}
-
 function playCoinCollectEffect(scene, x, y) {
   const sparkle = scene.add.circle(x, y, 6, 0xfff799, 0.8);
   const plusOne = scene.add.text(x, y - 8, '+1', {
@@ -358,44 +345,6 @@ function playCoinCollectEffect(scene, x, y) {
   });
 }
 
-function playEnemyHitEffect(scene, enemy, onComplete) {
-  const effectTargets = enemy.visualParts && enemy.visualParts.length > 0
-    ? enemy.visualParts
-    : [enemy];
-
-  effectTargets.forEach((part) => {
-    if (part.setFillStyle) {
-      part.setFillStyle(0xffe066);
-    }
-  });
-
-  scene.tweens.add({
-    targets: effectTargets,
-    scaleX: 1.25,
-    scaleY: 0.7,
-    alpha: 0,
-    duration: 120,
-    onComplete: () => {
-      if (onComplete) onComplete();
-    }
-  });
-}
-
-function destroyEnemyOnHit(scene, enemy) {
-  if (enemy.isDying) return;
-  enemy.isDying = true;
-
-  if (enemy.body) {
-    enemy.body.enable = false;
-  }
-
-  playEnemyHitEffect(scene, enemy, () => {
-    if (enemy.active) {
-      enemy.destroy();
-    }
-  });
-}
-
 function createCoin(scene, x, y) {
   const key = Math.round(x) + ':' + Math.round(y);
   if (coinSpawnKeys.has(key)) return;
@@ -413,12 +362,12 @@ function spawnMoreContent(scene, xBase) {
   const baseX = Phaser.Math.Clamp(xBase, 200, WORLD_WIDTH - 200);
 
   const enemyX1 = Phaser.Math.Clamp(baseX + 40, 120, WORLD_WIDTH - 120);
-  createEnemy(scene, enemyX1, 520, enemyX1 - 90, enemyX1 + 90);
+  enemyInstances.push(new Enemy(scene, enemyX1, 520, enemyX1 - 90, enemyX1 + 90, enemies));
 
   const chunk = Math.floor(baseX / CONTENT_SPAWN_STEP);
   if (chunk % 2 === 0) {
     const enemyX2 = Phaser.Math.Clamp(baseX + 220, 120, WORLD_WIDTH - 120);
-    createEnemy(scene, enemyX2, 520, enemyX2 - 70, enemyX2 + 70);
+    enemyInstances.push(new Enemy(scene, enemyX2, 520, enemyX2 - 70, enemyX2 + 70, enemies));
   }
 
   const coinY = [520, 480, 440, 500];
@@ -479,6 +428,7 @@ class GameScene extends Phaser.Scene {
     bossSpawned = false;
     lastSpawnX = 400;
     coinSpawnKeys = new Set();
+    enemyInstances = [];
 
     const bgKey = 'bg' + Phaser.Math.Between(1, 5);
     const bg = this.add.image(0, 0, bgKey);
@@ -501,42 +451,14 @@ class GameScene extends Phaser.Scene {
 
     this.player = new Player(this);
 
-    if (this.textures.exists('enemy')) {
-      if (!this.anims.exists('enemy-idle')) {
-        this.anims.create({
-          key: 'enemy-idle',
-          frames: this.anims.generateFrameNumbers('enemy', { start: 0, end: 1 }),
-          frameRate: 4,
-          repeat: -1
-        });
-      }
-
-      if (!this.anims.exists('enemy-walk')) {
-        this.anims.create({
-          key: 'enemy-walk',
-          frames: this.anims.generateFrameNumbers('enemy', { start: 2, end: 7 }),
-          frameRate: 10,
-          repeat: -1
-        });
-      }
-
-      if (!this.anims.exists('enemy-attack')) {
-        this.anims.create({
-          key: 'enemy-attack',
-          frames: this.anims.generateFrameNumbers('enemy', { start: 8, end: 11 }),
-          frameRate: 8,
-          repeat: 0
-        });
-      }
-    }
-
     createThanosAnimations(this);
+    Enemy.createAnimations(this);
 
     enemies = this.physics.add.group();
 
-    createEnemy(this, 300, 520, 220, 420);
-    createEnemy(this, 520, 520, 460, 700);
-    createEnemy(this, 700, 520, 620, 780);
+    enemyInstances.push(new Enemy(this, 300, 520, 220, 420, enemies));
+    enemyInstances.push(new Enemy(this, 520, 520, 460, 700, enemies));
+    enemyInstances.push(new Enemy(this, 700, 520, 620, 780, enemies));
 
     this.physics.add.collider(enemies, ground);
 
@@ -548,7 +470,7 @@ class GameScene extends Phaser.Scene {
     createCoin(this, 740, 520);
 
     this.player.setupColliders(ground, enemies, coins, {
-      onEnemyDestroyed: (enemy) => destroyEnemyOnHit(this, enemy),
+      onEnemyDestroyed: (sprite) => sprite.enemyInstance.die(),
       onCoinCollected: (x, y) => {
         score += 1;
         scoreText.setText('Moedas: ' + score);
@@ -606,22 +528,7 @@ class GameScene extends Phaser.Scene {
 
     if (this.player.isGameOver) return;
 
-    enemies.children.iterate((enemy) => {
-      if (!enemy || !enemy.active || !enemy.body || !enemy.body.enable) return;
-
-      if (enemy.x <= enemy.minX) {
-        enemy.direction = 1;
-      } else if (enemy.x >= enemy.maxX) {
-        enemy.direction = -1;
-      }
-
-      enemy.body.setVelocityX(enemy.speed * enemy.direction);
-      enemy.setFlipX(enemy.direction === -1);
-
-      if (!enemy.anims.currentAnim || enemy.anims.currentAnim.key !== 'enemy-walk') {
-        enemy.anims.play('enemy-walk', true);
-      }
-    });
+    enemyInstances.forEach((e) => e.update());
 
     if (this.player.sprite.x > lastSpawnX) {
       spawnMoreContent(this, this.player.sprite.x + CONTENT_SPAWN_AHEAD);
