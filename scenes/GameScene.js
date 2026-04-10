@@ -19,6 +19,16 @@ let scoreText;
 let phaseText;
 let bgMusic;
 let musicStarted = false;
+let floatingPlatforms;
+
+function createFloatingPlatform(scene, x, y) {
+  const platform = scene.add.tileSprite(x, y, 120, 20, 'ground');
+  platform.setOrigin(0.5);
+  platform.setDepth(-1);
+  scene.physics.add.existing(platform, true);
+  platform.body.setSize(120, 20, true);
+  floatingPlatforms.add(platform);
+}
 
 function startPhase(scene, phaseNumber, options = {}) {
   const { resetProgress = false } = options;
@@ -62,6 +72,10 @@ function startPhase(scene, phaseNumber, options = {}) {
   scene.coinManager.group.clear(true, true);
   scene.coinManager.spawnKeys.clear();
 
+  if (floatingPlatforms) {
+    floatingPlatforms.clear(true, true);
+  }
+
   scene.lastSpawnX = 400;
 
   if (scene.boss) {
@@ -95,6 +109,12 @@ function startPhase(scene, phaseNumber, options = {}) {
   scene.enemyManager.createInitial(baseEnemyCount, extraEnemies);
   scene.enemyManager.setPhaseDifficulty(currentPhase);
   scene.coinManager.createInitial();
+
+  for (let i = 1; i <= 3; i += 1) {
+    const x = i * 1000;
+    const y = Phaser.Math.Between(460, 500);
+    createFloatingPlatform(scene, x, y);
+  }
 
   scene.player.livesText.setText('Vidas: ' + scene.player.lives);
   scoreText.setText('Moedas: ' + score);
@@ -159,6 +179,9 @@ class GameScene extends Phaser.Scene {
 
     this.player = new Player(this);
     this.boss = new Boss(this);
+
+    floatingPlatforms = this.physics.add.staticGroup();
+    this.physics.add.collider(this.player.sprite, floatingPlatforms);
 
     this.enemyManager = new EnemyManager(this, ground);
 
