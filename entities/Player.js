@@ -565,7 +565,10 @@ export default class Player {
 
     if (this.lives <= 0) {
       this.isGameOver = true;
-      scene.add.text(400, 300, 'Game Over', {
+      if (scene.gameOverText) {
+        scene.gameOverText.destroy();
+      }
+      scene.gameOverText = scene.add.text(400, 300, 'Game Over', {
         fontSize: '48px',
         color: '#ffffff'
       }).setOrigin(0.5);

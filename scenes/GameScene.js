@@ -26,6 +26,19 @@ function startPhase(scene, phaseNumber, options = {}) {
   scene.currentPhase = currentPhase;
   const extraEnemies = currentPhase * 2;
 
+  if (scene.gameOverText) {
+    scene.gameOverText.destroy();
+    scene.gameOverText = null;
+  }
+  if (scene.victoryText) {
+    scene.victoryText.destroy();
+    scene.victoryText = null;
+  }
+  if (scene.victorySubText) {
+    scene.victorySubText.destroy();
+    scene.victorySubText = null;
+  }
+
   scene.physics.resume();
 
   if (resetProgress) {

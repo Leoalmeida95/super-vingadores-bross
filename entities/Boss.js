@@ -70,6 +70,8 @@ export default class Boss {
     this.physicsBody = null;
     this.sprite = null;
     this.attackHitbox = null;
+    this.targetPlayer = null;
+    this.attackAlreadyHitPlayer = false;
 
     this.state = 'idle';
     this.speed = 60;
@@ -168,6 +170,12 @@ export default class Boss {
       this.attackHitbox.x = this.physicsBody.x + hitboxOffsetX;
       this.attackHitbox.y = this.physicsBody.y - 65;
       this.attackHitbox.body.updateFromGameObject();
+
+      if (this.targetPlayer && this.targetPlayer.sprite && !this.targetPlayer.isGameOver) {
+        this.scene.physics.overlap(this.attackHitbox, this.targetPlayer.sprite, () => {
+          this._tryDamagePlayer();
+        });
+      }
     }
   }
 
@@ -176,6 +184,7 @@ export default class Boss {
     if (!this.canAttack || this.isAttacking || this.isDefending) return;
 
     this.isAttacking = true;
+    this.attackAlreadyHitPlayer = false;
     this.canAttack = false;
     this.physicsBody.body.setVelocityX(0);
 
@@ -190,6 +199,12 @@ export default class Boss {
     this.attackHitbox.body.setSize(this.attackHitbox.width, 85);
     this.attackHitbox.body.enable = true;
     this.attackHitbox.body.updateFromGameObject();
+
+    if (this.targetPlayer && this.targetPlayer.sprite && !this.targetPlayer.isGameOver) {
+      this.scene.physics.overlap(this.attackHitbox, this.targetPlayer.sprite, () => {
+        this._tryDamagePlayer();
+      });
+    }
 
     const hitboxDuration = isSpecial ? 500 : 300;
     this.scene.time.delayedCall(hitboxDuration, () => {
@@ -247,11 +262,19 @@ export default class Boss {
     this.scene.time.delayedCall(1200, () => {
       this.scene.physics.pause();
 
+      if (this.scene.victoryText) {
+        this.scene.victoryText.destroy();
+      }
+      if (this.scene.victorySubText) {
+        this.scene.victorySubText.destroy();
+      }
+
       const victoryText = this.scene.add.text(400, 250, 'VITÓRIA!', {
         fontSize: '64px',
         color: '#00ff00',
         fontStyle: 'bold'
       });
+      this.scene.victoryText = victoryText;
       victoryText.setOrigin(0.5);
       victoryText.setScrollFactor(0);
       victoryText.setDepth(1100);
@@ -270,6 +293,7 @@ export default class Boss {
         fontSize: '28px',
         color: '#ffffff'
       });
+      this.scene.victorySubText = subText;
       subText.setOrigin(0.5);
       subText.setScrollFactor(0);
       subText.setDepth(1100);
@@ -310,6 +334,7 @@ export default class Boss {
   _spawn(player, overrideX) {
     if (this.spawned) return;
     this.spawned = true;
+    this.targetPlayer = player;
 
     const worldWidth = this.scene.physics.world.bounds.width;
     const x = overrideX !== undefined ? overrideX : worldWidth - 150;
@@ -334,10 +359,7 @@ export default class Boss {
     this.attackHitbox.setVisible(false);
 
     this.scene.physics.add.overlap(this.attackHitbox, player.sprite, () => {
-      if (player.isGameOver || !this.attackHitbox || !this.attackHitbox.body.enable || this.isDead) return;
-      const currentPhase = this.scene.currentPhase || 1;
-      const bossDamage = 1 + Math.floor(currentPhase / 2);
-      player.takeDamage(bossDamage);
+      this._tryDamagePlayer();
     });
 
     player.linkBoss(this.physicsBody, () => this.takeDamage(1));
@@ -361,6 +383,19 @@ export default class Boss {
     this.lifeBg.setVisible(true);
     this.lifeBar.setVisible(true);
     this.lifeLabel.setVisible(true);
+  }
+
+  _tryDamagePlayer() {
+    if (!this.targetPlayer || !this.targetPlayer.sprite) return;
+    if (this.targetPlayer.isGameOver) return;
+    if (!this.attackHitbox || !this.attackHitbox.body || !this.attackHitbox.body.enable) return;
+    if (this.isDead) return;
+    if (this.attackAlreadyHitPlayer) return;
+
+    this.attackAlreadyHitPlayer = true;
+    const currentPhase = this.scene.currentPhase || 1;
+    const bossDamage = 1 + Math.floor(currentPhase / 2);
+    this.targetPlayer.takeDamage(bossDamage);
   }
 
   _updateLifeBar() {
