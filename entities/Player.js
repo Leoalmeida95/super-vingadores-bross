@@ -17,6 +17,9 @@ export default class Player {
     this.canUseSpecial = true;
     this.specialCooldown = 3000;
     this.currentSpecialHits = new WeakSet();
+    this.bossPhysicsBody = null;
+    this.onBossAttackHit = null;
+    this.attackAlreadyHitBoss = false;
     this.enemyGroup = null;
     this.onEnemyDestroyed = null;
 
@@ -212,6 +215,19 @@ export default class Player {
 
   }
 
+  linkBoss(physicsBody, onHit) {
+    const scene = this.scene;
+    this.bossPhysicsBody = physicsBody;
+    this.onBossAttackHit = onHit;
+    scene.physics.add.overlap(this.attackHitbox, physicsBody, (hitbox, bossObj) => {
+      if (!hitbox.body.enable) return;
+      if (!bossObj || !bossObj.active) return;
+      if (this.attackAlreadyHitBoss) return;
+      this.attackAlreadyHitBoss = true;
+      if (this.onBossAttackHit) this.onBossAttackHit();
+    });
+  }
+
   update() {
     if (this.sprite && this.sprite.body && this.sprite.body.velocity.y > 0) {
       this.lastFallingAt = this.scene.time.now;
@@ -287,6 +303,7 @@ export default class Player {
     this.canAttack = false;
     this.isAttacking = true;
     this.currentAttackHits = new WeakSet();
+    this.attackAlreadyHitBoss = false;
 
     const attackIndex = Phaser.Math.Between(1, this.attackAnimationCount);
     this.currentAttackAnimKey = 'hulk_attack_' + attackIndex;
@@ -307,6 +324,15 @@ export default class Player {
       scene.physics.overlap(this.attackHitbox, this.enemyGroup, (hitbox, enemy) => {
         if (!enemy || !enemy.active) return;
         this._tryAttackEnemyHit(enemy);
+      });
+    }
+
+    if (this.bossPhysicsBody && this.bossPhysicsBody.active) {
+      scene.physics.overlap(this.attackHitbox, this.bossPhysicsBody, (hitbox, bossObj) => {
+        if (!bossObj || !bossObj.active) return;
+        if (this.attackAlreadyHitBoss) return;
+        this.attackAlreadyHitBoss = true;
+        if (this.onBossAttackHit) this.onBossAttackHit();
       });
     }
 
