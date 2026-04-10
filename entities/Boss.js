@@ -104,12 +104,15 @@ export default class Boss {
     this._createAnimations();
   }
 
+  triggerSpawn(player) {
+    if (this.spawned || !player || !player.sprite) return;
+    const worldWidth = this.scene.physics.world.bounds.width;
+    const spawnX = Math.min(player.sprite.x + 300, worldWidth - 100);
+    this._spawn(player, spawnX);
+  }
+
   update(player) {
     if (!player || !player.sprite) return;
-
-    if (!this.spawned && player.sprite.x >= this.spawnTriggerX) {
-      this._spawn(player);
-    }
 
     if (!this.physicsBody || !this.sprite || this.isDead) return;
 
@@ -286,11 +289,12 @@ export default class Boss {
     });
   }
 
-  _spawn(player) {
+  _spawn(player, overrideX) {
     if (this.spawned) return;
     this.spawned = true;
 
-    const x = this.scene.physics.world.bounds.width - 150;
+    const worldWidth = this.scene.physics.world.bounds.width;
+    const x = overrideX !== undefined ? overrideX : worldWidth - 150;
     const y = BOSS_GROUND_Y;
 
     this.physicsBody = this.scene.physics.add.image(x, y, 'thanos_idle');

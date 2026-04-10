@@ -17,6 +17,7 @@ export default class Player {
     this.canUseSpecial = true;
     this.specialCooldown = 3000;
     this.currentSpecialHits = new WeakSet();
+    this.invulnerabilityToken = 0;
     this._specialVisualSprite = null;
     this.bossPhysicsBody = null;
     this.onBossAttackHit = null;
@@ -503,6 +504,43 @@ export default class Player {
     this.onEnemyDestroyed(enemy);
   }
 
+  _setInvulnerability(durationMs) {
+    this.isInvulnerable = true;
+    this.invulnerabilityToken += 1;
+    const token = this.invulnerabilityToken;
+
+    this.scene.time.delayedCall(durationMs, () => {
+      if (token !== this.invulnerabilityToken) return;
+      this.isInvulnerable = false;
+    });
+  }
+
+  addLife() {
+    this.lives += 1;
+    this.livesText.setText('Vidas: ' + this.lives);
+
+    // Invincibility window so the gained life can't be immediately lost.
+    this._setInvulnerability(800);
+
+    const scene = this.scene;
+    const plusText = scene.add.text(
+      this.sprite.x,
+      this.sprite.y - 40,
+      '+1 Vida',
+      { fontSize: '20px', color: '#00ff88', fontStyle: 'bold' }
+    );
+    plusText.setOrigin(0.5);
+    plusText.setDepth(1050);
+    scene.tweens.add({
+      targets: plusText,
+      y: plusText.y - 40,
+      alpha: 0,
+      duration: 1200,
+      ease: 'Linear',
+      onComplete: () => plusText.destroy()
+    });
+  }
+
   takeDamage() {
     if (this.isInvulnerable || this.isGameOver) return;
 
@@ -511,7 +549,7 @@ export default class Player {
     this.lives -= 1;
     this.livesText.setText('Vidas: ' + this.lives);
 
-    this.isInvulnerable = true;
+    this._setInvulnerability(1000);
     this.sprite.setTint(0xff6666);
     scene.tweens.add({
       targets: this.sprite,
@@ -537,10 +575,6 @@ export default class Player {
       });
       return;
     }
-
-    scene.time.delayedCall(1000, () => {
-      this.isInvulnerable = false;
-    });
   }
 
   _setAnimation(key) {

@@ -3,12 +3,14 @@ import EnemyManager from '../entities/EnemyManager.js';
 import Coin from '../entities/Coin.js';
 import Boss from '../entities/Boss.js';
 
-const WORLD_WIDTH = 3000;
+const WORLD_WIDTH = 10000;
 const WORLD_HEIGHT = 600;
 const CONTENT_SPAWN_STEP = 400;
 const CONTENT_SPAWN_AHEAD = 500;
 const GROUND_COLLISION_CENTER_Y = 596;
 let score = 0;
+let coinsCollectedTotal = 0;
+let lastLifeMilestone = 0;
 let scoreText;
 let bgMusic;
 let musicStarted = false;
@@ -48,6 +50,8 @@ class GameScene extends Phaser.Scene {
 
   create() {
     score = 0;
+    coinsCollectedTotal = 0;
+    lastLifeMilestone = 0;
     this.lastSpawnX = 400;
 
     const bgKey = 'bg' + Phaser.Math.Between(1, 5);
@@ -77,7 +81,35 @@ class GameScene extends Phaser.Scene {
 
     this.coinManager = new Coin(this, () => {
       score += 1;
+      coinsCollectedTotal += 1;
       scoreText.setText('Moedas: ' + score);
+
+      if (coinsCollectedTotal >= lastLifeMilestone + 10) {
+        lastLifeMilestone += 10;
+        this.player.addLife();
+      }
+
+      if (coinsCollectedTotal === 50 && !this.boss.spawned) {
+        const warning = this.add.text(400, 200, '⚠️ Thanos está chegando!', {
+          fontSize: '32px',
+          color: '#ff4444',
+          fontStyle: 'bold'
+        });
+        warning.setOrigin(0.5);
+        warning.setScrollFactor(0);
+        warning.setDepth(1100);
+        this.tweens.add({
+          targets: warning,
+          alpha: 0,
+          duration: 2500,
+          delay: 1000,
+          ease: 'Linear',
+          onComplete: () => warning.destroy()
+        });
+        this.time.delayedCall(1500, () => {
+          this.boss.triggerSpawn(this.player);
+        });
+      }
     });
 
     this.coinManager.createInitial();
