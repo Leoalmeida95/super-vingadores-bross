@@ -12,6 +12,11 @@ export default class Player {
     this.stompGraceMs = 120;
     this.currentAttackAnimKey = null;
     this.currentAttackHits = new WeakSet();
+    this.attackAnimationCount = 4;
+    this.isUsingSpecial = false;
+    this.canUseSpecial = true;
+    this.specialCooldown = 3000;
+    this.currentSpecialHits = new WeakSet();
     this.enemyGroup = null;
     this.onEnemyDestroyed = null;
 
@@ -35,6 +40,7 @@ export default class Player {
 
     this.cursors = scene.input.keyboard.createCursorKeys();
     this.keyX = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+    this.keySpecial = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
 
     this.attackHitbox = scene.add.rectangle(-100, -100, 35, 25, 0xffff00, 0.35);
     scene.physics.add.existing(this.attackHitbox);
@@ -43,6 +49,14 @@ export default class Player {
     this.attackHitbox.body.setSize(42, 32);
     this.attackHitbox.body.enable = false;
     this.attackHitbox.setVisible(false);
+
+    this.specialHitbox = scene.add.rectangle(-100, -100, 112, 60, 0x66ccff, 0.25);
+    scene.physics.add.existing(this.specialHitbox);
+    this.specialHitbox.body.setAllowGravity(false);
+    this.specialHitbox.body.setImmovable(true);
+    this.specialHitbox.body.setSize(112, 60);
+    this.specialHitbox.body.enable = false;
+    this.specialHitbox.setVisible(false);
 
     this.sprite.anims.play('idle');
 
@@ -55,6 +69,17 @@ export default class Player {
   }
 
   _createAnimations(scene) {
+    const hulkTexture = scene.textures.get('hulk');
+    const hulkSourceImage = hulkTexture ? hulkTexture.getSourceImage() : null;
+    const hulkFrameZero = scene.textures.getFrame('hulk', 0);
+    const frameWidth = hulkFrameZero ? hulkFrameZero.cutWidth : 0;
+    const frameHeight = hulkFrameZero ? hulkFrameZero.cutHeight : 0;
+    const textureWidth = hulkSourceImage ? hulkSourceImage.width : 0;
+    const textureHeight = hulkSourceImage ? hulkSourceImage.height : 0;
+    const framesPerRow = frameWidth > 0 ? Math.floor(textureWidth / frameWidth) : 0;
+    const rowCount = frameHeight > 0 ? Math.floor(textureHeight / frameHeight) : 0;
+    const lastRowIndex = rowCount > 0 ? rowCount - 1 : 0;
+
     if (!scene.anims.exists('idle')) {
       scene.anims.create({
         key: 'idle',
@@ -82,32 +107,61 @@ export default class Player {
       });
     }
 
-    if (!scene.anims.exists('hulk_attack_1')) {
+    if (framesPerRow > 0 && !scene.anims.exists('hulk_attack_1')) {
+      const row5 = this._getFramesFromRow(5, framesPerRow);
       scene.anims.create({
         key: 'hulk_attack_1',
-        frames: scene.anims.generateFrameNumbers('hulk', { start: 32, end: 39 }),
+        frames: scene.anims.generateFrameNumbers('hulk', row5),
         frameRate: 16,
         repeat: 0
       });
     }
 
-    if (!scene.anims.exists('hulk_attack_2')) {
+    if (framesPerRow > 0 && !scene.anims.exists('hulk_attack_2')) {
+      const row8 = this._getFramesFromRow(8, framesPerRow);
       scene.anims.create({
         key: 'hulk_attack_2',
-        frames: scene.anims.generateFrameNumbers('hulk', { start: 56, end: 63 }),
+        frames: scene.anims.generateFrameNumbers('hulk', row8),
         frameRate: 16,
         repeat: 0
       });
     }
 
-    if (!scene.anims.exists('hulk_attack_3')) {
+    if (framesPerRow > 0 && !scene.anims.exists('hulk_attack_3')) {
+      const row9 = this._getFramesFromRow(9, framesPerRow);
       scene.anims.create({
         key: 'hulk_attack_3',
-        frames: scene.anims.generateFrameNumbers('hulk', { start: 64, end: 71 }),
+        frames: scene.anims.generateFrameNumbers('hulk', row9),
         frameRate: 16,
         repeat: 0
       });
     }
+
+    if (framesPerRow > 0 && rowCount > 0 && !scene.anims.exists('hulk_attack_4')) {
+      const lastRow = this._getFramesFromRow(lastRowIndex, framesPerRow);
+      scene.anims.create({
+        key: 'hulk_attack_4',
+        frames: scene.anims.generateFrameNumbers('hulk', lastRow),
+        frameRate: 16,
+        repeat: 0
+      });
+    }
+
+    if (framesPerRow > 0 && !scene.anims.exists('hulk_special')) {
+      const specialRow = this._getFramesFromRow(12, framesPerRow);
+      scene.anims.create({
+        key: 'hulk_special',
+        frames: scene.anims.generateFrameNumbers('hulk', specialRow),
+        frameRate: 14,
+        repeat: 0
+      });
+    }
+  }
+
+  _getFramesFromRow(rowIndex, framesPerRow) {
+    const start = rowIndex * framesPerRow;
+    const end = start + framesPerRow - 1;
+    return { start, end };
   }
 
   setupColliders(ground, enemies, callbacks) {
@@ -151,6 +205,11 @@ export default class Player {
       this._tryAttackEnemyHit(enemy);
     });
 
+    scene.physics.add.overlap(this.specialHitbox, enemies, (hitbox, enemy) => {
+      if (!hitbox.body.enable || !enemy || !enemy.active) return;
+      this._trySpecialEnemyHit(enemy);
+    });
+
   }
 
   update() {
@@ -169,30 +228,46 @@ export default class Player {
       return;
     }
 
-    if (this.cursors.left.isDown) {
-      this.sprite.body.setVelocityX(-200);
-      this.facing = 'left';
-      this.sprite.setFlipX(true);
-    } else if (this.cursors.right.isDown) {
-      this.sprite.body.setVelocityX(200);
-      this.facing = 'right';
-      this.sprite.setFlipX(false);
-    } else {
+    if (this.isUsingSpecial) {
       this.sprite.body.setVelocityX(0);
     }
 
-    if (this.cursors.up.isDown && this.sprite.body.touching.down) {
+    if (!this.isUsingSpecial && this.cursors.left.isDown) {
+      this.sprite.body.setVelocityX(-200);
+      this.facing = 'left';
+      this.sprite.setFlipX(true);
+    } else if (!this.isUsingSpecial && this.cursors.right.isDown) {
+      this.sprite.body.setVelocityX(200);
+      this.facing = 'right';
+      this.sprite.setFlipX(false);
+    } else if (!this.isUsingSpecial) {
+      this.sprite.body.setVelocityX(0);
+    }
+
+    if (!this.isUsingSpecial && this.cursors.up.isDown && this.sprite.body.touching.down) {
       this.sprite.body.setVelocityY(-400);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyX) && this.canAttack) {
+    if (Phaser.Input.Keyboard.JustDown(this.keyX) && this.canAttack && !this.isUsingSpecial) {
       this.attack();
+    }
+
+    if (
+      Phaser.Input.Keyboard.JustDown(this.keySpecial) &&
+      this.canUseSpecial &&
+      !this.isAttacking &&
+      !this.isUsingSpecial &&
+      !this.isGameOver
+    ) {
+      this.performSpecial();
     }
 
     const onGround = this.sprite.body.touching.down || this.sprite.body.blocked.down;
     const movingX = this.sprite.body.velocity.x !== 0;
 
-    if (this.isAttacking) {
+    if (this.isUsingSpecial) {
+      this._setAnimation('hulk_special');
+    } else if (this.isAttacking) {
       if (this.currentAttackAnimKey) {
         this._setAnimation(this.currentAttackAnimKey);
       }
@@ -207,13 +282,13 @@ export default class Player {
 
   attack() {
     const scene = this.scene;
-    if (this.isAttacking || !this.canAttack) return;
+    if (this.isAttacking || this.isUsingSpecial || !this.canAttack) return;
 
     this.canAttack = false;
     this.isAttacking = true;
     this.currentAttackHits = new WeakSet();
 
-    const attackIndex = Phaser.Math.Between(1, 3);
+    const attackIndex = Phaser.Math.Between(1, this.attackAnimationCount);
     this.currentAttackAnimKey = 'hulk_attack_' + attackIndex;
     this.sprite.anims.play(this.currentAttackAnimKey, true);
 
@@ -256,6 +331,58 @@ export default class Player {
     scene.time.delayedCall(650, finishAttack);
   }
 
+  performSpecial() {
+    const scene = this.scene;
+    if (this.isGameOver || this.isUsingSpecial || this.isAttacking || !this.canUseSpecial) return;
+
+    this.isUsingSpecial = true;
+    this.canUseSpecial = false;
+    this.canAttack = false;
+    this.currentSpecialHits = new WeakSet();
+
+    this.sprite.body.setVelocityX(0);
+    this.sprite.anims.play('hulk_special', true);
+
+    scene.time.delayedCall(200, () => {
+      if (!this.isUsingSpecial || this.isGameOver) return;
+
+      const offsetX = this.facing === 'right' ? 72 : -72;
+      this.specialHitbox.setPosition(
+        this.sprite.body.center.x + offsetX,
+        this.sprite.body.center.y + 2
+      );
+      this.specialHitbox.body.setSize(112, 60);
+      this.specialHitbox.body.enable = true;
+      this.specialHitbox.setVisible(true);
+      this.specialHitbox.body.updateFromGameObject();
+
+      if (this.enemyGroup) {
+        scene.physics.overlap(this.specialHitbox, this.enemyGroup, (hitbox, enemy) => {
+          if (!enemy || !enemy.active) return;
+          this._trySpecialEnemyHit(enemy);
+        });
+      }
+
+      scene.time.delayedCall(400, () => {
+        if (this.specialHitbox && this.specialHitbox.body) {
+          this.specialHitbox.body.enable = false;
+        }
+        if (this.specialHitbox) {
+          this.specialHitbox.setVisible(false);
+        }
+      });
+    });
+
+    scene.time.delayedCall(600, () => {
+      this.isUsingSpecial = false;
+      this.canAttack = true;
+    });
+
+    scene.time.delayedCall(this.specialCooldown, () => {
+      this.canUseSpecial = true;
+    });
+  }
+
   _consumeAttackHit(target) {
     if (!target) return false;
     if (!this.attackHitbox || !this.attackHitbox.body || !this.attackHitbox.body.enable) return false;
@@ -272,6 +399,25 @@ export default class Player {
     if (!this._consumeAttackHit(enemy)) return;
 
     console.log('HIT DETECTADO', enemy);
+    this.onEnemyDestroyed(enemy);
+  }
+
+  _consumeSpecialHit(target) {
+    if (!target) return false;
+    if (!this.specialHitbox || !this.specialHitbox.body || !this.specialHitbox.body.enable) return false;
+    if (!this.isUsingSpecial) return false;
+    if (this.currentSpecialHits.has(target)) return false;
+
+    this.currentSpecialHits.add(target);
+    return true;
+  }
+
+  _trySpecialEnemyHit(enemy) {
+    if (!enemy || !enemy.active) return;
+    if (!this.onEnemyDestroyed) return;
+    if (!this._consumeSpecialHit(enemy)) return;
+
+    console.log('HIT ESPECIAL DETECTADO', enemy);
     this.onEnemyDestroyed(enemy);
   }
 

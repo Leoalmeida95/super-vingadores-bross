@@ -282,6 +282,12 @@ export default class Boss {
       this.takeDamage(1);
     });
 
+    this.scene.physics.add.overlap(player.specialHitbox, this.physicsBody, (hitbox) => {
+      if (!hitbox.body.enable || this.isDead) return;
+      if (!player._consumeSpecialHit(this.physicsBody)) return;
+      this.takeDamage(3);
+    });
+
     const initialFrameKey = Boss.animationFrames.idle[0] || 'thanos_idle';
     this.sprite = this.scene.add.sprite(x, y, initialFrameKey);
     this.sprite.setOrigin(0.5, 1);
