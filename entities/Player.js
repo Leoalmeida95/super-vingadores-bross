@@ -13,6 +13,9 @@ export default class Player {
     this.currentAttackAnimKey = null;
     this.currentAttackHits = new WeakSet();
     this.attackAnimationCount = 4;
+    this.jumpVelocity = -400;
+    this.doubleJumpVelocity = -380;
+    this.hasUsedDoubleJump = false;
     this.isUsingSpecial = false;
     this.canUseSpecial = true;
     this.specialCooldown = 3000;
@@ -283,8 +286,18 @@ export default class Player {
       this.sprite.body.setVelocityX(0);
     }
 
-    if (!this.isUsingSpecial && this.cursors.up.isDown && this.sprite.body.touching.down) {
-      this.sprite.body.setVelocityY(-400);
+    const onGroundNow = this.sprite.body.touching.down || this.sprite.body.blocked.down;
+    if (onGroundNow) {
+      this.hasUsedDoubleJump = false;
+    }
+
+    if (!this.isUsingSpecial && Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
+      if (onGroundNow) {
+        this.sprite.body.setVelocityY(this.jumpVelocity);
+      } else if (!this.hasUsedDoubleJump) {
+        this.sprite.body.setVelocityY(this.doubleJumpVelocity);
+        this.hasUsedDoubleJump = true;
+      }
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyX) && this.canAttack && !this.isUsingSpecial) {

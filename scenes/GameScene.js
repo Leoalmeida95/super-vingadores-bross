@@ -119,7 +119,7 @@ function startPhase(scene, phaseNumber, options = {}) {
 
   for (let i = 1; i <= 3; i += 1) {
     const x = i * 1000;
-    const y = Phaser.Math.Between(460, 500);
+    const y = Phaser.Math.Between(400, 430);
     createFloatingPlatform(scene, x, y);
   }
 
@@ -197,8 +197,8 @@ class GameScene extends Phaser.Scene {
       coinsCollectedTotal += coinValue;
       scoreText.setText('Moedas: ' + score);
 
-      if (coinsCollectedTotal >= lastLifeMilestone + 10) {
-        lastLifeMilestone += 10;
+      if (coinsCollectedTotal >= lastLifeMilestone + 25) {
+        lastLifeMilestone += 25;
         this.player.addLife();
       }
 
