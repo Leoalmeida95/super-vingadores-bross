@@ -1,21 +1,11 @@
+import Player from '../entities/Player.js';
+
 const WORLD_WIDTH = 3000;
 const WORLD_HEIGHT = 600;
 const CONTENT_SPAWN_STEP = 400;
 const CONTENT_SPAWN_AHEAD = 500;
 
-let player;
-let cursors;
 let enemies;
-let keyX;
-let attackHitbox;
-let footHitbox;
-let canAttack = true;
-let isAttacking = false;
-let facing = 'right';
-let playerLives = 10;
-let isInvulnerable = false;
-let isGameOver = false;
-let livesText;
 let coins;
 let score = 0;
 let scoreText;
@@ -41,7 +31,6 @@ let lastSpawnX = 0;
 let coinSpawnKeys = new Set();
 let bgMusic;
 let musicStarted = false;
-let stompLockUntil = 0;
 let bossLifeBg;
 let bossLifeBar;
 let lastAttackIndex = -1;
@@ -164,39 +153,8 @@ function playThanosAnimation(bossSprite, animationType) {
   bossSprite.play(animationKey);
 }
 
-function performAttack(scene) {
-  canAttack = false;
-  isAttacking = true;
-
-  setPlayerAnimation('attack');
-
-  const offsetX = facing === 'right' ? 52 : -52;
-  attackHitbox.setPosition(player.body.center.x + offsetX, player.body.center.y + 10);
-  attackHitbox.setVisible(true);
-  attackHitbox.body.enable = true;
-  attackHitbox.body.updateFromGameObject();
-
-  scene.physics.overlap(attackHitbox, enemies, (hitbox, enemy) => {
-    if (!hitbox.body.enable || !enemy || !enemy.active) return;
-    destroyEnemyOnHit(scene, enemy);
-  });
-
-  scene.time.delayedCall(200, () => {
-    attackHitbox.body.enable = false;
-    attackHitbox.setVisible(false);
-  });
-
-  scene.time.delayedCall(220, () => {
-    isAttacking = false;
-  });
-
-  scene.time.delayedCall(300, () => {
-    canAttack = true;
-  });
-}
-
 function performBossAttack(scene) {
-  if (isGameOver || !boss || !boss.body || !bossSprite || !bossAttackHitbox || !bossAttackHitbox.body) return;
+  if (scene.player.isGameOver || !boss || !boss.body || !bossSprite || !bossAttackHitbox || !bossAttackHitbox.body) return;
   if (!boss.bossCanAttack || boss.bossIsAttacking || boss.bossIsDefending) return;
 
   boss.bossIsAttacking = true;
@@ -241,50 +199,6 @@ function performBossAttack(scene) {
   });
 }
 
-function damagePlayer(scene) {
-  if (isInvulnerable || isGameOver) return;
-
-  playerLives -= 1;
-  livesText.setText('Vidas: ' + playerLives);
-
-  isInvulnerable = true;
-  player.setTint(0xff6666);
-  scene.tweens.add({
-    targets: player,
-    alpha: 0.3,
-    duration: 100,
-    yoyo: true,
-    repeat: 5,
-    onComplete: () => {
-      player.alpha = 1;
-      player.clearTint();
-    }
-  });
-
-  if (playerLives <= 0) {
-    isGameOver = true;
-    scene.add.text(400, 300, 'Game Over', {
-      fontSize: '48px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
-
-    scene.time.delayedCall(1500, () => {
-      scene.scene.restart();
-    });
-    return;
-  }
-
-  scene.time.delayedCall(1000, () => {
-    isInvulnerable = false;
-  });
-}
-
-function setPlayerAnimation(key) {
-  if (!player || !player.anims) return;
-  if (player.anims.currentAnim && player.anims.currentAnim.key === key) return;
-  player.anims.play(key, true);
-}
-
 function spawnBoss(scene) {
   if (bossSpawned) return;
   bossSpawned = true;
@@ -324,12 +238,12 @@ function spawnBoss(scene) {
   bossAttackHitbox.body.enable = false;
   bossAttackHitbox.setVisible(false);
 
-  scene.physics.add.overlap(bossAttackHitbox, player, () => {
-    if (isGameOver || !boss || !bossAttackHitbox || !bossAttackHitbox.body.enable) return;
-    damagePlayer(scene);
+  scene.physics.add.overlap(bossAttackHitbox, scene.player.sprite, () => {
+    if (scene.player.isGameOver || !boss || !bossAttackHitbox || !bossAttackHitbox.body.enable) return;
+    scene.player.takeDamage();
   });
 
-  scene.physics.add.overlap(attackHitbox, boss, (hitbox, b) => {
+  scene.physics.add.overlap(scene.player.attackHitbox, boss, (hitbox, b) => {
     if (!hitbox.body.enable || !boss || boss.bossIsDead) return;
     damageBoss(scene, 1);
   });
@@ -558,12 +472,6 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
-    isGameOver = false;
-    isInvulnerable = false;
-    canAttack = true;
-    isAttacking = false;
-    facing = 'right';
-    playerLives = 10;
     score = 0;
     boss = null;
     bossSprite = null;
@@ -591,45 +499,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.existing(groundBody, true);
     const ground = groundBody;
 
-    player = this.physics.add.sprite(100, 450, 'hulk', 0);
-    player.body.setCollideWorldBounds(true);
-
-    footHitbox = this.add.rectangle(player.x, player.y + (player.height / 2), 30, 10, 0x00ffff, 0);
-    this.physics.add.existing(footHitbox);
-    footHitbox.body.setAllowGravity(false);
-    footHitbox.body.setImmovable(true);
-    footHitbox.body.setSize(30, 10);
-    footHitbox.setVisible(false);
-
-    this.cameras.main.startFollow(player, true, 0.08, 0.08);
-
-    this.anims.create({
-      key: 'idle',
-      frames: this.anims.generateFrameNumbers('hulk', { start: 0, end: 3 }),
-      frameRate: 6,
-      repeat: -1
-    });
-
-    this.anims.create({
-      key: 'run',
-      frames: this.anims.generateFrameNumbers('hulk', { start: 4, end: 11 }),
-      frameRate: 12,
-      repeat: -1
-    });
-
-    this.anims.create({
-      key: 'jump',
-      frames: this.anims.generateFrameNumbers('hulk', { start: 12, end: 15 }),
-      frameRate: 10,
-      repeat: -1
-    });
-
-    this.anims.create({
-      key: 'attack',
-      frames: this.anims.generateFrameNumbers('hulk', { start: 16, end: 21 }),
-      frameRate: 16,
-      repeat: 0
-    });
+    this.player = new Player(this);
 
     if (this.textures.exists('enemy')) {
       if (!this.anims.exists('enemy-idle')) {
@@ -662,10 +532,6 @@ class GameScene extends Phaser.Scene {
 
     createThanosAnimations(this);
 
-    player.anims.play('idle');
-
-    this.physics.add.collider(player, ground);
-
     enemies = this.physics.add.group();
 
     createEnemy(this, 300, 520, 220, 420);
@@ -674,46 +540,6 @@ class GameScene extends Phaser.Scene {
 
     this.physics.add.collider(enemies, ground);
 
-    this.physics.add.collider(player, enemies, (playerObj, enemy) => {
-      if (!enemy || !enemy.active || enemy.isDying) return;
-      if (attackHitbox && attackHitbox.body.enable) return;
-
-      const isFalling = playerObj.body.velocity.y > 50;
-      const stompBySensor = this.physics.overlap(footHitbox, enemy);
-
-      const aboveEnemyCenter = playerObj.body.center.y < enemy.body.center.y;
-      const topTolerance = playerObj.body.bottom <= enemy.body.top + 40;
-      const stompByTop = aboveEnemyCenter && topTolerance;
-
-      if (isFalling && (stompBySensor || stompByTop)) {
-        stompLockUntil = this.time.now + 120;
-        destroyEnemyOnHit(this, enemy);
-        playerObj.setVelocityY(-350);
-        return;
-      }
-
-      if (this.time.now < stompLockUntil) return;
-
-      damagePlayer(this);
-    });
-
-    cursors = this.input.keyboard.createCursorKeys();
-
-    keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
-
-    attackHitbox = this.add.rectangle(-100, -100, 35, 25, 0xffff00, 0.35);
-    this.physics.add.existing(attackHitbox);
-    attackHitbox.body.setAllowGravity(false);
-    attackHitbox.body.setImmovable(true);
-    attackHitbox.body.setSize(42, 32);
-    attackHitbox.body.enable = false;
-    attackHitbox.setVisible(false);
-
-    this.physics.add.overlap(attackHitbox, enemies, (hitbox, enemy) => {
-      if (!hitbox.body.enable || !enemy || !enemy.active) return;
-      destroyEnemyOnHit(this, enemy);
-    });
-
     coins = this.physics.add.staticGroup();
     createCoin(this, 180, 520);
     createCoin(this, 260, 480);
@@ -721,34 +547,14 @@ class GameScene extends Phaser.Scene {
     createCoin(this, 560, 480);
     createCoin(this, 740, 520);
 
-    this.physics.add.overlap(player, coins, (playerObj, coin) => {
-      if (!coin || !coin.active || !coin.body || !coin.body.enable) return;
-      if (coin.collected) return;
-      coin.collected = true;
-
-      const coinX = coin.x;
-      const coinY = coin.y;
-
-      if (typeof coin.disableBody === 'function') {
-        coin.disableBody(true, true);
-      } else {
-        coin.body.enable = false;
-        coin.setActive(false);
-        coin.setVisible(false);
+    this.player.setupColliders(ground, enemies, coins, {
+      onEnemyDestroyed: (enemy) => destroyEnemyOnHit(this, enemy),
+      onCoinCollected: (x, y) => {
+        score += 1;
+        scoreText.setText('Moedas: ' + score);
+        playCoinCollectEffect(this, x, y);
       }
-
-      score += 1;
-      scoreText.setText('Moedas: ' + score);
-
-      playCoinCollectEffect(this, coinX, coinY);
     });
-
-    livesText = this.add.text(20, 14, 'Vidas: ' + playerLives, {
-      fontSize: '24px',
-      color: '#ffffff'
-    });
-    livesText.setScrollFactor(0);
-    livesText.setDepth(1001);
 
     scoreText = this.add.text(20, 44, 'Moedas: ' + score, {
       fontSize: '24px',
@@ -796,49 +602,9 @@ class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
-    if (footHitbox && footHitbox.body && player && player.body) {
-      footHitbox.x = player.body.center.x;
-      footHitbox.y = player.body.bottom + 4;
-      footHitbox.body.updateFromGameObject();
-    }
+    this.player.update();
 
-    if (isGameOver) {
-      player.body.setVelocityX(0);
-      return;
-    }
-
-    if (cursors.left.isDown) {
-      player.body.setVelocityX(-200);
-      facing = 'left';
-      player.setFlipX(true);
-    } else if (cursors.right.isDown) {
-      player.body.setVelocityX(200);
-      facing = 'right';
-      player.setFlipX(false);
-    } else {
-      player.body.setVelocityX(0);
-    }
-
-    if (cursors.up.isDown && player.body.touching.down) {
-      player.body.setVelocityY(-400);
-    }
-
-    if (Phaser.Input.Keyboard.JustDown(keyX) && canAttack) {
-      performAttack(this);
-    }
-
-    const onGround = player.body.touching.down || player.body.blocked.down;
-    const movingX = player.body.velocity.x !== 0;
-
-    if (isAttacking) {
-      setPlayerAnimation('attack');
-    } else if (!onGround) {
-      setPlayerAnimation('jump');
-    } else if (movingX) {
-      setPlayerAnimation('run');
-    } else {
-      setPlayerAnimation('idle');
-    }
+    if (this.player.isGameOver) return;
 
     enemies.children.iterate((enemy) => {
       if (!enemy || !enemy.active || !enemy.body || !enemy.body.enable) return;
@@ -857,17 +623,17 @@ class GameScene extends Phaser.Scene {
       }
     });
 
-    if (player.x > lastSpawnX) {
-      spawnMoreContent(this, player.x + CONTENT_SPAWN_AHEAD);
+    if (this.player.sprite.x > lastSpawnX) {
+      spawnMoreContent(this, this.player.sprite.x + CONTENT_SPAWN_AHEAD);
       lastSpawnX += CONTENT_SPAWN_STEP;
     }
 
-    if (!bossSpawned && player.x >= WORLD_WIDTH - 300) {
+    if (!bossSpawned && this.player.sprite.x >= WORLD_WIDTH - 300) {
       spawnBoss(this);
     }
 
     if (boss && bossSprite && !boss.bossIsDead) {
-      const distance = player.x - boss.x;
+      const distance = this.player.sprite.x - boss.x;
       const absDistance = Math.abs(distance);
 
       boss.bossDirection = distance >= 0 ? 1 : -1;
