@@ -107,6 +107,18 @@ let scoreText;
 let boss;
 let bossSprite;
 let bossSpawned = false;
+const BOSS_GROUND_Y = 560;
+const BOSS_VISUAL_Y_ADJUST = -14;
+let thanosAnimations = {
+  idle: [],
+  walk: [],
+  run: [],
+  hit: [],
+  death: [],
+  attack: {},
+  defense: {},
+  special: {}
+};
 let lastSpawnX = 0;
 let coinSpawnKeys = new Set();
 let bgMusic;
@@ -124,6 +136,21 @@ function preload() {
   this.load.image('ground', 'assets/citys/city_ground.png');
 
   this.load.image('thanos_idle', 'assets/thanos_idle.png');
+  this.load.json('thanos_manifest', 'assets/thanos_manifest.json');
+
+  this.load.once('filecomplete-json-thanos_manifest', () => {
+    const manifest = this.cache.json.get('thanos_manifest');
+    thanosAnimations = {
+      idle: loadThanosAnimation(this, 'assets/thanos_idle', 'thanos_idle', manifest.idle),
+      walk: loadThanosAnimation(this, 'assets/thanos_walk', 'thanos_walk', manifest.walk),
+      run: loadThanosAnimation(this, 'assets/thanos_run', 'thanos_run', manifest.run),
+      hit: loadThanosAnimation(this, 'assets/thanos_hit', 'thanos_hit', manifest.hit),
+      death: loadThanosAnimation(this, 'assets/thanos_death', 'thanos_death', manifest.death),
+      attack: loadThanosAnimationVariants(this, 'assets/thanos_attack', 'thanos_attack', manifest.attack),
+      defense: loadThanosAnimationVariants(this, 'assets/thanos_defense', 'thanos_defense', manifest.defense),
+      special: loadThanosAnimationVariants(this, 'assets/thanos_special', 'thanos_special', manifest.special)
+    };
+  });
 
   // Sprite sheet do Hulk (ajuste frameWidth/frameHeight depois, se precisar)
   this.load.spritesheet('hulk', 'assets/hulk.png', {
@@ -139,6 +166,102 @@ function preload() {
 
   // Musica de fundo
   this.load.audio('bg-music', 'assets/music.mp3');
+}
+
+function loadThanosAnimation(scene, path, keyPrefix, frameFiles) {
+  const keys = [];
+  const sortedFiles = [...frameFiles].sort((a, b) => {
+    return Number(a.replace('.png', '')) - Number(b.replace('.png', ''));
+  });
+
+  sortedFiles.forEach((fileName) => {
+    const frameNumber = fileName.replace('.png', '');
+    const frameKey = keyPrefix + '_' + frameNumber;
+    scene.load.image(frameKey, path + '/' + fileName);
+    keys.push(frameKey);
+  });
+
+  return keys;
+}
+
+function loadThanosAnimationVariants(scene, basePath, keyPrefix, variants) {
+  const result = {};
+
+  Object.keys(variants)
+    .sort((a, b) => Number(a) - Number(b))
+    .forEach((variantKey) => {
+      result[variantKey] = loadThanosAnimation(
+        scene,
+        basePath + '/' + variantKey,
+        keyPrefix + '_' + variantKey,
+        variants[variantKey]
+      );
+    });
+
+  return result;
+}
+
+function createThanosAnimations(scene) {
+  const simpleConfigs = {
+    idle: { frameRate: 6, repeat: -1 },
+    walk: { frameRate: 10, repeat: -1 },
+    run: { frameRate: 12, repeat: -1 },
+    hit: { frameRate: 10, repeat: 0 },
+    death: { frameRate: 8, repeat: 0 }
+  };
+
+  Object.keys(simpleConfigs).forEach((type) => {
+    const frameKeys = thanosAnimations[type] || [];
+    const animationKey = 'thanos_' + type;
+    if (frameKeys.length === 0 || scene.anims.exists(animationKey)) return;
+
+    scene.anims.create({
+      key: animationKey,
+      frames: frameKeys.map((frameKey) => ({ key: frameKey })),
+      frameRate: simpleConfigs[type].frameRate,
+      repeat: simpleConfigs[type].repeat
+    });
+  });
+
+  const variantConfigs = {
+    attack: { frameRate: 14, repeat: 0 },
+    defense: { frameRate: 14, repeat: 0 },
+    special: { frameRate: 14, repeat: 0 }
+  };
+
+  Object.keys(variantConfigs).forEach((type) => {
+    const variants = thanosAnimations[type] || {};
+    Object.keys(variants).forEach((variant) => {
+      const frameKeys = variants[variant] || [];
+      const animationKey = 'thanos_' + type + '_' + variant;
+      if (frameKeys.length === 0 || scene.anims.exists(animationKey)) return;
+
+      scene.anims.create({
+        key: animationKey,
+        frames: frameKeys.map((frameKey) => ({ key: frameKey })),
+        frameRate: variantConfigs[type].frameRate,
+        repeat: variantConfigs[type].repeat
+      });
+    });
+  });
+}
+
+function playThanosAnimation(bossSprite, animationType) {
+  if (!bossSprite || !bossSprite.anims) return;
+
+  const hasVariants = animationType === 'attack' || animationType === 'defense' || animationType === 'special';
+  let animationKey = 'thanos_' + animationType;
+
+  if (hasVariants) {
+    const variants = Object.keys(thanosAnimations[animationType] || {});
+    if (variants.length === 0) return;
+
+    const randomIndex = Phaser.Math.Between(0, variants.length - 1);
+    animationKey = 'thanos_' + animationType + '_' + variants[randomIndex];
+  }
+
+  if (bossSprite.anims.currentAnim && bossSprite.anims.currentAnim.key === animationKey) return;
+  bossSprite.play(animationKey);
 }
 
 function create() {
@@ -253,6 +376,8 @@ function create() {
       });
     }
   }
+
+  createThanosAnimations(this);
 
   // Começa parado no idle
   player.anims.play('idle');
@@ -503,8 +628,9 @@ function update(time, delta) {
 
   // Sync visual do boss com o corpo físico
   if (boss && bossSprite) {
+    boss.y = BOSS_GROUND_Y;
     bossSprite.x = boss.x;
-    bossSprite.y = boss.y;
+    bossSprite.y = boss.y + BOSS_VISUAL_Y_ADJUST;
   }
 
 }
@@ -601,21 +727,31 @@ function spawnBoss(scene) {
   bossSpawned = true;
 
   const x = WORLD_WIDTH - 150;
-  const y = 560;
+  const y = BOSS_GROUND_Y;
 
   // Corpo físico invisível
   boss = scene.physics.add.image(x, y, 'thanos_idle');
   boss.setVisible(false);
-  boss.body.setSize(80, 100, true);
+  boss.y = BOSS_GROUND_Y;
+  boss.setScale(1.5);
+  boss.body.setSize(boss.displayWidth * 0.6, boss.displayHeight * 0.85, true);
+  boss.body.setOffset(
+    boss.displayWidth * 0.2,
+    boss.displayHeight * 0.15
+  );
   boss.body.setAllowGravity(false);
   boss.body.setImmovable(true);
   boss.body.setCollideWorldBounds(true);
 
-  // Visual estático do boss
-  bossSprite = scene.add.image(x, y, 'thanos_idle');
+  // Visual do boss (sprite para tocar animações)
+  const initialFrameKey = thanosAnimations.idle[0] || 'thanos_idle';
+  bossSprite = scene.add.sprite(x, y, initialFrameKey);
   bossSprite.setOrigin(0.5, 1);
   bossSprite.setScale(1.5);
   bossSprite.setDepth(10);
+  bossSprite.y = boss.y + BOSS_VISUAL_Y_ADJUST;
+
+  playThanosAnimation(bossSprite, 'idle');
 }
 
 // Função simples para criar um inimigo com patrulha horizontal
