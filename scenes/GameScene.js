@@ -45,10 +45,18 @@ function createBigCoin(scene, x, y) {
   scene.coinManager.createBigCoin(x, y);
 }
 
+function getPhaseBackgroundKey(phaseNumber) {
+  const bgIndex = ((phaseNumber - 1) % 5) + 1;
+  return 'bg' + bgIndex;
+}
+
 function startPhase(scene, phaseNumber, options = {}) {
   const { resetProgress = false } = options;
   currentPhase = phaseNumber;
   scene.currentPhase = currentPhase;
+  if (scene.bg) {
+    scene.bg.setTexture(getPhaseBackgroundKey(currentPhase));
+  }
   const extraEnemies = currentPhase * 2;
 
   if (scene.gameOverText) {
@@ -70,7 +78,7 @@ function startPhase(scene, phaseNumber, options = {}) {
     score = 0;
     coinsCollectedTotal = 0;
     lastLifeMilestone = 0;
-    scene.player.lives = 10;
+    scene.player.lives = 15;
   }
 
   bossSpawned = false;
@@ -179,13 +187,12 @@ class GameScene extends Phaser.Scene {
   create() {
     this.lastSpawnX = 400;
 
-    const bgIndex = ((currentPhase - 1) % 5) + 1;
-    const bgKey = 'bg' + bgIndex;
-    const bg = this.add.image(0, 0, bgKey);
-    bg.setOrigin(0, 0);
-    bg.setDisplaySize(WORLD_WIDTH, WORLD_HEIGHT);
-    bg.setDepth(-100);
-    bg.setScrollFactor(0.5);
+    const bgKey = getPhaseBackgroundKey(currentPhase);
+    this.bg = this.add.image(0, 0, bgKey);
+    this.bg.setOrigin(0, 0);
+    this.bg.setDisplaySize(WORLD_WIDTH, WORLD_HEIGHT);
+    this.bg.setDepth(-100);
+    this.bg.setScrollFactor(0.5);
 
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);

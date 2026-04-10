@@ -1,7 +1,7 @@
 export default class Player {
   constructor(scene) {
     this.scene = scene;
-    this.lives = 10;
+    this.lives = 15;
     this.isGameOver = false;
     this.isInvulnerable = false;
     this.canAttack = true;

@@ -80,7 +80,7 @@ export default class Boss {
     this.isHit = false;
     this.isDefending = false;
     this.canAttack = true;
-    this.attackCooldown = 3800;
+    this.attackCooldown = 5200;
     this.attackStep = 0;
     this.life = 20;
     this.maxLife = 20;
@@ -420,11 +420,25 @@ export default class Boss {
     this.lifeBg.setVisible(true);
     this.lifeBar.setVisible(true);
     this.lifeLabel.setVisible(true);
+
+    const currentPhase = this.scene.currentPhase || 1;
+    const initialAttackDelay = this._getPhaseInitialAttackDelay(currentPhase);
+    this.canAttack = false;
+    this.scene.time.delayedCall(initialAttackDelay, () => {
+      if (!this.isDead) {
+        this.canAttack = true;
+      }
+    });
   }
 
   _getPhaseAttackCooldown(phase) {
     const phaseIndex = Math.max(1, phase);
-    return Math.max(900, 3800 - ((phaseIndex - 1) * 250));
+    return Math.max(1400, 5200 - ((phaseIndex - 1) * 320));
+  }
+
+  _getPhaseInitialAttackDelay(phase) {
+    const phaseIndex = Math.max(1, phase);
+    return Math.max(1600, 3600 - ((phaseIndex - 1) * 260));
   }
 
   _tryDamagePlayer() {
