@@ -25,8 +25,16 @@ function createFloatingPlatform(scene, x, y) {
   const platform = scene.add.tileSprite(x, y, 120, 28, 'ground');
   platform.setOrigin(0.5);
   platform.setDepth(-1);
-  scene.physics.add.existing(platform, true);
+  scene.physics.add.existing(platform);
+  platform.body.setAllowGravity(false);
+  platform.body.setImmovable(true);
   platform.body.setSize(120, 28, true);
+  platform.startX = x;
+  platform.startY = y;
+  platform.range = Phaser.Math.Between(100, 200);
+  platform.speed = Phaser.Math.Between(40, 80);
+  platform.direction = 1;
+  platform.isVertical = Math.random() < 0.3;
   floatingPlatforms.add(platform);
 
   createBigCoin(scene, x, y - 40);
@@ -194,8 +202,20 @@ class GameScene extends Phaser.Scene {
     this.player = new Player(this);
     this.boss = new Boss(this);
 
-    floatingPlatforms = this.physics.add.staticGroup();
-    this.physics.add.collider(this.player.sprite, floatingPlatforms);
+    floatingPlatforms = this.physics.add.group({
+      allowGravity: false,
+      immovable: true
+    });
+    this.physics.add.collider(this.player.sprite, floatingPlatforms, (playerObj, platform) => {
+      const isOnTop =
+        playerObj.body.bottom <= platform.body.top + 10 &&
+        playerObj.body.velocity.y >= 0;
+
+      if (isOnTop) {
+        playerObj.x += platform.body.velocity.x * (this.game.loop.delta / 1000);
+        playerObj.y += platform.body.velocity.y * (this.game.loop.delta / 1000);
+      }
+    });
 
     this.enemyManager = new EnemyManager(this, ground);
 
@@ -289,6 +309,30 @@ class GameScene extends Phaser.Scene {
   }
 
   update() {
+    floatingPlatforms.children.iterate((platform) => {
+      if (!platform || !platform.body) return;
+
+      if (platform.isVertical) {
+        platform.body.setVelocityX(0);
+        platform.body.setVelocityY(platform.speed * platform.direction);
+
+        if (platform.y >= platform.startY + platform.range) {
+          platform.direction = -1;
+        } else if (platform.y <= platform.startY - platform.range) {
+          platform.direction = 1;
+        }
+      } else {
+        platform.body.setVelocityY(0);
+        platform.body.setVelocityX(platform.speed * platform.direction);
+
+        if (platform.x >= platform.startX + platform.range) {
+          platform.direction = -1;
+        } else if (platform.x <= platform.startX - platform.range) {
+          platform.direction = 1;
+        }
+      }
+    });
+
     this.player.update();
 
     if (this.player.isGameOver) return;
