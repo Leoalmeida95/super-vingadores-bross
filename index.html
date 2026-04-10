@@ -129,6 +129,9 @@ let musicStarted = false;
 let stompLockUntil = 0;
 let bossLifeBg;
 let bossLifeBar;
+let lastAttackIndex = -1;
+let lastDefenseIndex = -1;
+let lastSpecialIndex = -1;
 
 new Phaser.Game(config);
 
@@ -251,6 +254,15 @@ function createThanosAnimations(scene) {
   });
 }
 
+function getRandomIndexWithoutRepeat(min, max, lastIndex) {
+  if (min === max) return min;
+  let next;
+  do {
+    next = Phaser.Math.Between(min, max);
+  } while (next === lastIndex);
+  return next;
+}
+
 function playThanosAnimation(bossSprite, animationType) {
   if (!bossSprite || !bossSprite.anims) return;
 
@@ -261,8 +273,19 @@ function playThanosAnimation(bossSprite, animationType) {
     const variants = Object.keys(thanosAnimations[animationType] || {});
     if (variants.length === 0) return;
 
-    const randomIndex = Phaser.Math.Between(0, variants.length - 1);
-    animationKey = 'thanos_' + animationType + '_' + variants[randomIndex];
+    let variantIndex;
+    if (animationType === 'attack') {
+      variantIndex = getRandomIndexWithoutRepeat(1, 5, lastAttackIndex);
+      lastAttackIndex = variantIndex;
+    } else if (animationType === 'defense') {
+      variantIndex = getRandomIndexWithoutRepeat(1, 2, lastDefenseIndex);
+      lastDefenseIndex = variantIndex;
+    } else {
+      variantIndex = getRandomIndexWithoutRepeat(1, 3, lastSpecialIndex);
+      lastSpecialIndex = variantIndex;
+    }
+
+    animationKey = 'thanos_' + animationType + '_' + variantIndex;
   }
 
   if (bossSprite.anims.currentAnim && bossSprite.anims.currentAnim.key === animationKey) return;
