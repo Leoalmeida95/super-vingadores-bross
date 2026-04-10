@@ -159,6 +159,16 @@ export default class Player {
         repeat: 0
       });
     }
+
+    if (framesPerRow > 0 && !scene.anims.exists('hulk_special_effect')) {
+      const effectRow = this._getFramesFromRow(13, framesPerRow);
+      scene.anims.create({
+        key: 'hulk_special_effect',
+        frames: scene.anims.generateFrameNumbers('hulk', effectRow),
+        frameRate: 16,
+        repeat: 0
+      });
+    }
   }
 
   _getFramesFromRow(rowIndex, framesPerRow) {
@@ -381,6 +391,20 @@ export default class Player {
       this.specialHitbox.body.enable = true;
       this.specialHitbox.setVisible(true);
       this.specialHitbox.body.updateFromGameObject();
+
+      const effectOffsetX = this.facing === 'right' ? 80 : -80;
+      const effect = scene.add.sprite(
+        this.sprite.body.center.x + effectOffsetX,
+        this.sprite.body.bottom,
+        'hulk'
+      );
+      effect.setOrigin(0.5, 1);
+      effect.setDepth(5);
+      effect.setScale(1.3);
+      effect.setAlpha(0.9);
+      effect.setFlipX(this.facing === 'left');
+      effect.anims.play('hulk_special_effect', true);
+      scene.time.delayedCall(400, () => { effect.destroy(); });
 
       if (this.enemyGroup) {
         scene.physics.overlap(this.specialHitbox, this.enemyGroup, (hitbox, enemy) => {
