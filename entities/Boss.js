@@ -230,6 +230,46 @@ export default class Boss {
     this.lifeBg.setVisible(false);
     this.lifeBar.setVisible(false);
 
+    this.scene.time.delayedCall(1200, () => {
+      this.scene.physics.pause();
+
+      const victoryText = this.scene.add.text(400, 250, 'VITÓRIA!', {
+        fontSize: '64px',
+        color: '#00ff00',
+        fontStyle: 'bold'
+      });
+      victoryText.setOrigin(0.5);
+      victoryText.setScrollFactor(0);
+      victoryText.setDepth(1100);
+      victoryText.setAlpha(0);
+      victoryText.setScale(0.5);
+
+      this.scene.tweens.add({
+        targets: victoryText,
+        alpha: 1,
+        scale: 1,
+        duration: 500,
+        ease: 'Back.Out'
+      });
+
+      const subText = this.scene.add.text(400, 320, 'Thanos derrotado!', {
+        fontSize: '28px',
+        color: '#ffffff'
+      });
+      subText.setOrigin(0.5);
+      subText.setScrollFactor(0);
+      subText.setDepth(1100);
+      subText.setAlpha(0);
+
+      this.scene.tweens.add({
+        targets: subText,
+        alpha: 1,
+        duration: 600,
+        delay: 300,
+        ease: 'Linear'
+      });
+    });
+
     this.scene.time.delayedCall(1500, () => {
       if (this.sprite) {
         this.sprite.destroy();
