@@ -1,5 +1,6 @@
 import Player from '../entities/Player.js';
 import Enemy from '../entities/Enemy.js';
+import Coin from '../entities/Coin.js';
 
 const WORLD_WIDTH = 3000;
 const WORLD_HEIGHT = 600;
@@ -8,7 +9,6 @@ const CONTENT_SPAWN_AHEAD = 500;
 
 let enemies;
 let enemyInstances = [];
-let coins;
 let score = 0;
 let scoreText;
 let boss;
@@ -30,7 +30,6 @@ let thanosAnimations = {
   special: {}
 };
 let lastSpawnX = 0;
-let coinSpawnKeys = new Set();
 let bgMusic;
 let musicStarted = false;
 let bossLifeBg;
@@ -320,42 +319,6 @@ function killBoss(scene) {
   });
 }
 
-function playCoinCollectEffect(scene, x, y) {
-  const sparkle = scene.add.circle(x, y, 6, 0xfff799, 0.8);
-  const plusOne = scene.add.text(x, y - 8, '+1', {
-    fontSize: '16px',
-    color: '#ffe066'
-  }).setOrigin(0.5);
-
-  scene.tweens.add({
-    targets: sparkle,
-    scaleX: 2,
-    scaleY: 2,
-    alpha: 0,
-    duration: 130,
-    onComplete: () => sparkle.destroy()
-  });
-
-  scene.tweens.add({
-    targets: plusOne,
-    y: y - 28,
-    alpha: 0,
-    duration: 260,
-    onComplete: () => plusOne.destroy()
-  });
-}
-
-function createCoin(scene, x, y) {
-  const key = Math.round(x) + ':' + Math.round(y);
-  if (coinSpawnKeys.has(key)) return;
-  coinSpawnKeys.add(key);
-
-  const coin = scene.add.circle(x, y, 10, 0xffdd33);
-  scene.physics.add.existing(coin, true);
-
-  coins.add(coin);
-}
-
 function spawnMoreContent(scene, xBase) {
   if (xBase > WORLD_WIDTH - 200) return;
 
@@ -373,7 +336,7 @@ function spawnMoreContent(scene, xBase) {
   const coinY = [520, 480, 440, 500];
   for (let i = 0; i < coinY.length; i += 1) {
     const coinX = Phaser.Math.Clamp(baseX + 20 + (i * 70), 80, WORLD_WIDTH - 80);
-    createCoin(scene, coinX, coinY[i]);
+    scene.coinManager.create(coinX, coinY[i]);
   }
 }
 
@@ -427,7 +390,6 @@ class GameScene extends Phaser.Scene {
     bossAttackHitbox = null;
     bossSpawned = false;
     lastSpawnX = 400;
-    coinSpawnKeys = new Set();
     enemyInstances = [];
 
     const bgKey = 'bg' + Phaser.Math.Between(1, 5);
@@ -462,21 +424,21 @@ class GameScene extends Phaser.Scene {
 
     this.physics.add.collider(enemies, ground);
 
-    coins = this.physics.add.staticGroup();
-    createCoin(this, 180, 520);
-    createCoin(this, 260, 480);
-    createCoin(this, 420, 520);
-    createCoin(this, 560, 480);
-    createCoin(this, 740, 520);
-
-    this.player.setupColliders(ground, enemies, coins, {
-      onEnemyDestroyed: (sprite) => sprite.enemyInstance.die(),
-      onCoinCollected: (x, y) => {
-        score += 1;
-        scoreText.setText('Moedas: ' + score);
-        playCoinCollectEffect(this, x, y);
-      }
+    this.coinManager = new Coin(this, (x, y) => {
+      score += 1;
+      scoreText.setText('Moedas: ' + score);
     });
+
+    this.coinManager.create(180, 520);
+    this.coinManager.create(260, 480);
+    this.coinManager.create(420, 520);
+    this.coinManager.create(560, 480);
+    this.coinManager.create(740, 520);
+
+    this.player.setupColliders(ground, enemies, {
+      onEnemyDestroyed: (sprite) => sprite.enemyInstance.die()
+    });
+    this.coinManager.setupCollection(this.player.sprite);
 
     scoreText = this.add.text(20, 44, 'Moedas: ' + score, {
       fontSize: '24px',

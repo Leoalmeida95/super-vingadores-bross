@@ -86,9 +86,9 @@ export default class Player {
     }
   }
 
-  setupColliders(ground, enemies, coins, callbacks) {
+  setupColliders(ground, enemies, callbacks) {
     const scene = this.scene;
-    const { onEnemyDestroyed, onCoinCollected } = callbacks;
+    const { onEnemyDestroyed } = callbacks;
 
     scene.physics.add.collider(this.sprite, ground);
 
@@ -120,24 +120,6 @@ export default class Player {
       onEnemyDestroyed(enemy);
     });
 
-    scene.physics.add.overlap(this.sprite, coins, (playerObj, coin) => {
-      if (!coin || !coin.active || !coin.body || !coin.body.enable) return;
-      if (coin.collected) return;
-      coin.collected = true;
-
-      const coinX = coin.x;
-      const coinY = coin.y;
-
-      if (typeof coin.disableBody === 'function') {
-        coin.disableBody(true, true);
-      } else {
-        coin.body.enable = false;
-        coin.setActive(false);
-        coin.setVisible(false);
-      }
-
-      onCoinCollected(coinX, coinY);
-    });
   }
 
   update() {
