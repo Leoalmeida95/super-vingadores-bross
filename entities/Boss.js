@@ -79,11 +79,13 @@ export default class Boss {
     this.isAttacking = false;
     this.isDefending = false;
     this.canAttack = true;
-    this.attackCooldown = 2000;
+    this.attackCooldown = 3800;
     this.attackStep = 0;
     this.life = 20;
     this.maxLife = 20;
     this.isDead = false;
+    this.wasInRedZone = false;
+    this.pendingRedSpecial = false;
 
     this.lastAttackIndex = -1;
     this.lastDefenseIndex = -1;
@@ -133,6 +135,8 @@ export default class Boss {
 
     this.direction = distance >= 0 ? 1 : -1;
 
+    this._tryTriggerPendingRedSpecial();
+
     if (absDistance <= 80 && !this.isAttacking && !this.isDefending) {
       this.isDefending = true;
       this.physicsBody.body.setVelocityX(0);
@@ -179,7 +183,7 @@ export default class Boss {
     }
   }
 
-  attack() {
+  attack(forceSpecial = false) {
     if (this.isDead || !this.physicsBody || !this.sprite || !this.attackHitbox) return;
     if (!this.canAttack || this.isAttacking || this.isDefending) return;
 
@@ -188,7 +192,10 @@ export default class Boss {
     this.canAttack = false;
     this.physicsBody.body.setVelocityX(0);
 
-    const isSpecial = this.attackStep === 1;
+    const currentPhase = this.scene.currentPhase || 1;
+    this.attackCooldown = this._getPhaseAttackCooldown(currentPhase);
+
+    const isSpecial = forceSpecial || this.attackStep === 1;
     this._playAnimation(isSpecial ? 'special' : 'attack');
     this.attackStep = this.attackStep + 1 > 1 ? 0 : this.attackStep + 1;
 
@@ -238,7 +245,16 @@ export default class Boss {
 
     if (this.life <= 0) {
       this.die();
+      return;
     }
+
+    const lifePercent = this.life / this.maxLife;
+    const isInRedZone = lifePercent <= 0.25;
+    if (isInRedZone && !this.wasInRedZone) {
+      this.pendingRedSpecial = true;
+      this._tryTriggerPendingRedSpecial();
+    }
+    this.wasInRedZone = isInRedZone;
   }
 
   die() {
@@ -335,6 +351,8 @@ export default class Boss {
     if (this.spawned) return;
     this.spawned = true;
     this.targetPlayer = player;
+    this.wasInRedZone = false;
+    this.pendingRedSpecial = false;
 
     const worldWidth = this.scene.physics.world.bounds.width;
     const x = overrideX !== undefined ? overrideX : worldWidth - 150;
@@ -385,6 +403,11 @@ export default class Boss {
     this.lifeLabel.setVisible(true);
   }
 
+  _getPhaseAttackCooldown(phase) {
+    const phaseIndex = Math.max(1, phase);
+    return Math.max(900, 3800 - ((phaseIndex - 1) * 250));
+  }
+
   _tryDamagePlayer() {
     if (!this.targetPlayer || !this.targetPlayer.sprite) return;
     if (this.targetPlayer.isGameOver) return;
@@ -396,6 +419,23 @@ export default class Boss {
     const currentPhase = this.scene.currentPhase || 1;
     const bossDamage = 1 + Math.floor(currentPhase / 2);
     this.targetPlayer.takeDamage(bossDamage);
+  }
+
+  _tryTriggerPendingRedSpecial() {
+    if (!this.pendingRedSpecial) return;
+    if (this.isDead) {
+      this.pendingRedSpecial = false;
+      return;
+    }
+    if (this.isAttacking || this.isDefending) return;
+
+    // Special from red zone has priority over normal cooldown cadence.
+    if (!this.canAttack) {
+      this.canAttack = true;
+    }
+
+    this.pendingRedSpecial = false;
+    this.attack(true);
   }
 
   _updateLifeBar() {
