@@ -4,22 +4,48 @@ export default class Coin {
     this.group = scene.physics.add.staticGroup();
     this.onCollected = onCollected;
     this.spawnKeys = new Set();
+    this.minDistance = 72;
   }
 
   createInitial() {
-    this.create(180, 520);
-    this.create(260, 480);
-    this.create(420, 520);
-    this.create(560, 480);
-    this.create(740, 520);
+    const worldWidth = this.scene.physics.world.bounds.width;
+    for (let i = 0; i < 5; i += 1) {
+      let created = false;
+      for (let attempt = 0; attempt < 20 && !created; attempt += 1) {
+        const coinX = Phaser.Math.Between(100, worldWidth - 100);
+        const coinY = Phaser.Math.Between(400, 520);
+        if (!this._hasMinDistance(coinX, coinY)) continue;
+        created = !!this.create(coinX, coinY);
+      }
+    }
   }
 
   spawnChunk(xBase, worldWidth) {
-    const coinY = [520, 480, 440, 500];
-    for (let i = 0; i < coinY.length; i += 1) {
-      const coinX = Phaser.Math.Clamp(xBase + 20 + (i * 70), 80, worldWidth - 80);
-      this.create(coinX, coinY[i]);
+    for (let i = 0; i < 5; i += 1) {
+      let created = false;
+      for (let attempt = 0; attempt < 20 && !created; attempt += 1) {
+        const rawX = xBase + Phaser.Math.Between(0, 200);
+        const coinX = Phaser.Math.Clamp(rawX, 100, worldWidth - 100);
+        const coinY = Phaser.Math.Between(400, 520);
+        if (!this._hasMinDistance(coinX, coinY)) continue;
+        created = !!this.create(coinX, coinY);
+      }
     }
+  }
+
+  _hasMinDistance(x, y) {
+    const minDistSq = this.minDistance * this.minDistance;
+    const children = this.group.getChildren();
+    for (let i = 0; i < children.length; i += 1) {
+      const coin = children[i];
+      if (!coin || !coin.active) continue;
+      const dx = coin.x - x;
+      const dy = coin.y - y;
+      if ((dx * dx) + (dy * dy) < minDistSq) {
+        return false;
+      }
+    }
+    return true;
   }
 
   create(x, y) {

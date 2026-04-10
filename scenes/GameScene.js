@@ -74,6 +74,7 @@ function startPhase(scene, phaseNumber, options = {}) {
     scene.boss.life = scene.boss.maxLife;
     scene.boss.lifeBg.setVisible(false);
     scene.boss.lifeBar.setVisible(false);
+    scene.boss.lifeLabel.setVisible(false);
     scene.boss.lifeBar.width = 300;
     scene.boss.lifeBar.setFillStyle(0x00ff00);
   }

@@ -95,6 +95,16 @@ export default class Boss {
     this.lifeBg.setOrigin(0.5);
     this.lifeBg.setVisible(false);
 
+    this.lifeLabel = scene.add.text(400, 10, 'VIDA DO THANOS', {
+      fontSize: '20px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    });
+    this.lifeLabel.setOrigin(0.5);
+    this.lifeLabel.setScrollFactor(0);
+    this.lifeLabel.setDepth(1000);
+    this.lifeLabel.setVisible(false);
+
     this.lifeBar = scene.add.rectangle(400, 30, 300, 20, 0x00ff00);
     this.lifeBar.setScrollFactor(0);
     this.lifeBar.setDepth(1002);
@@ -232,6 +242,7 @@ export default class Boss {
 
     this.lifeBg.setVisible(false);
     this.lifeBar.setVisible(false);
+    this.lifeLabel.setVisible(false);
 
     this.scene.time.delayedCall(1200, () => {
       this.scene.physics.pause();
@@ -324,7 +335,9 @@ export default class Boss {
 
     this.scene.physics.add.overlap(this.attackHitbox, player.sprite, () => {
       if (player.isGameOver || !this.attackHitbox || !this.attackHitbox.body.enable || this.isDead) return;
-      player.takeDamage();
+      const currentPhase = this.scene.currentPhase || 1;
+      const bossDamage = 1 + Math.floor(currentPhase / 2);
+      player.takeDamage(bossDamage);
     });
 
     player.linkBoss(this.physicsBody, () => this.takeDamage(1));
@@ -347,6 +360,7 @@ export default class Boss {
 
     this.lifeBg.setVisible(true);
     this.lifeBar.setVisible(true);
+    this.lifeLabel.setVisible(true);
   }
 
   _updateLifeBar() {

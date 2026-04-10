@@ -541,12 +541,12 @@ export default class Player {
     });
   }
 
-  takeDamage() {
+  takeDamage(damage = 1) {
     if (this.isInvulnerable || this.isGameOver) return;
 
     const scene = this.scene;
 
-    this.lives -= 1;
+    this.lives -= damage;
     this.livesText.setText('Vidas: ' + this.lives);
 
     this._setInvulnerability(1000);
