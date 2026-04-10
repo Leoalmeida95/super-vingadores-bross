@@ -6,6 +6,22 @@ export default class Coin {
     this.spawnKeys = new Set();
   }
 
+  createInitial() {
+    this.create(180, 520);
+    this.create(260, 480);
+    this.create(420, 520);
+    this.create(560, 480);
+    this.create(740, 520);
+  }
+
+  spawnChunk(xBase, worldWidth) {
+    const coinY = [520, 480, 440, 500];
+    for (let i = 0; i < coinY.length; i += 1) {
+      const coinX = Phaser.Math.Clamp(xBase + 20 + (i * 70), 80, worldWidth - 80);
+      this.create(coinX, coinY[i]);
+    }
+  }
+
   create(x, y) {
     const key = Math.round(x) + ':' + Math.round(y);
     if (this.spawnKeys.has(key)) return null;

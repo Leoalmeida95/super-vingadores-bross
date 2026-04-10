@@ -1,5 +1,5 @@
 import Player from '../entities/Player.js';
-import Enemy from '../entities/Enemy.js';
+import EnemyManager from '../entities/EnemyManager.js';
 import Coin from '../entities/Coin.js';
 import Boss from '../entities/Boss.js';
 
@@ -8,35 +8,10 @@ const WORLD_HEIGHT = 600;
 const CONTENT_SPAWN_STEP = 400;
 const CONTENT_SPAWN_AHEAD = 500;
 const GROUND_COLLISION_CENTER_Y = 596;
-
-let enemies;
-let enemyInstances = [];
 let score = 0;
 let scoreText;
-let lastSpawnX = 0;
 let bgMusic;
 let musicStarted = false;
-
-function spawnMoreContent(scene, xBase) {
-  if (xBase > WORLD_WIDTH - 200) return;
-
-  const baseX = Phaser.Math.Clamp(xBase, 200, WORLD_WIDTH - 200);
-
-  const enemyX1 = Phaser.Math.Clamp(baseX + 40, 120, WORLD_WIDTH - 120);
-  enemyInstances.push(new Enemy(scene, enemyX1, 520, enemyX1 - 90, enemyX1 + 90, enemies));
-
-  const chunk = Math.floor(baseX / CONTENT_SPAWN_STEP);
-  if (chunk % 2 === 0) {
-    const enemyX2 = Phaser.Math.Clamp(baseX + 220, 120, WORLD_WIDTH - 120);
-    enemyInstances.push(new Enemy(scene, enemyX2, 520, enemyX2 - 70, enemyX2 + 70, enemies));
-  }
-
-  const coinY = [520, 480, 440, 500];
-  for (let i = 0; i < coinY.length; i += 1) {
-    const coinX = Phaser.Math.Clamp(baseX + 20 + (i * 70), 80, WORLD_WIDTH - 80);
-    scene.coinManager.create(coinX, coinY[i]);
-  }
-}
 
 class GameScene extends Phaser.Scene {
   constructor() {
@@ -68,8 +43,7 @@ class GameScene extends Phaser.Scene {
 
   create() {
     score = 0;
-    lastSpawnX = 400;
-    enemyInstances = [];
+    this.lastSpawnX = 400;
 
     const bgKey = 'bg' + Phaser.Math.Between(1, 5);
     const bg = this.add.image(0, 0, bgKey);
@@ -93,29 +67,18 @@ class GameScene extends Phaser.Scene {
     this.player = new Player(this);
     this.boss = new Boss(this);
 
-    Enemy.createAnimations(this);
-
-    enemies = this.physics.add.group();
-
-    enemyInstances.push(new Enemy(this, 300, 520, 220, 420, enemies));
-    enemyInstances.push(new Enemy(this, 520, 520, 460, 700, enemies));
-    enemyInstances.push(new Enemy(this, 700, 520, 620, 780, enemies));
-
-    this.physics.add.collider(enemies, ground);
+    this.enemyManager = new EnemyManager(this, ground);
+    this.enemyManager.createInitial();
 
     this.coinManager = new Coin(this, () => {
       score += 1;
       scoreText.setText('Moedas: ' + score);
     });
 
-    this.coinManager.create(180, 520);
-    this.coinManager.create(260, 480);
-    this.coinManager.create(420, 520);
-    this.coinManager.create(560, 480);
-    this.coinManager.create(740, 520);
+    this.coinManager.createInitial();
 
-    this.player.setupColliders(ground, enemies, {
-      onEnemyDestroyed: (sprite) => sprite.enemyInstance.die()
+    this.player.setupColliders(ground, this.enemyManager.getGroup(), {
+      onEnemyDestroyed: (sprite) => this.enemyManager.handleEnemyDestroyed(sprite)
     });
     this.coinManager.setupCollection(this.player.sprite);
 
@@ -157,11 +120,13 @@ class GameScene extends Phaser.Scene {
 
     if (this.player.isGameOver) return;
 
-    enemyInstances.forEach((enemy) => enemy.update());
+    this.enemyManager.update();
 
-    if (this.player.sprite.x > lastSpawnX) {
-      spawnMoreContent(this, this.player.sprite.x + CONTENT_SPAWN_AHEAD);
-      lastSpawnX += CONTENT_SPAWN_STEP;
+    if (this.player.sprite.x > this.lastSpawnX) {
+      const baseX = Phaser.Math.Clamp(this.player.sprite.x + CONTENT_SPAWN_AHEAD, 200, WORLD_WIDTH - 200);
+      this.enemyManager.spawnChunk(baseX, WORLD_WIDTH);
+      this.coinManager.spawnChunk(baseX, WORLD_WIDTH);
+      this.lastSpawnX += CONTENT_SPAWN_STEP;
     }
 
     this.boss.update(this.player);
