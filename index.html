@@ -116,7 +116,11 @@ let stompLockUntil = 0;
 new Phaser.Game(config);
 
 function preload() {
-  this.load.image('bg', 'assets/citys/city 1.png');
+  this.load.image('bg1', 'assets/citys/city 1.png');
+  this.load.image('bg2', 'assets/citys/city 2.png');
+  this.load.image('bg3', 'assets/citys/city 3.png');
+  this.load.image('bg4', 'assets/citys/city 4.png');
+  this.load.image('bg5', 'assets/citys/city 5.png');
   this.load.image('ground', 'assets/citys/city_ground.png');
 
   this.load.image('thanos_idle', 'assets/thanos_idle.png');
@@ -152,8 +156,9 @@ function create() {
   lastSpawnX = 400;
   coinSpawnKeys = new Set();
 
-  // Fundo de imagem cobrindo todo o nivel
-  const bg = this.add.image(0, 0, 'bg');
+  // Fundo de imagem cobrindo todo o nivel (aleatório a cada início da cena)
+  const bgKey = 'bg' + Phaser.Math.Between(1, 5);
+  const bg = this.add.image(0, 0, bgKey);
   bg.setOrigin(0, 0);
   bg.setDisplaySize(WORLD_WIDTH, WORLD_HEIGHT);
   bg.setDepth(-100);
