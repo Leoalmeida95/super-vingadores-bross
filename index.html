@@ -106,41 +106,26 @@ let score = 0;
 let scoreText;
 let boss;
 let bossSprite;
-let bossHealth = 5;
-let bossText;
-let bossCanTakeHit = true;
 let bossSpawned = false;
 let lastSpawnX = 0;
 let coinSpawnKeys = new Set();
 let bgMusic;
 let musicStarted = false;
 let stompLockUntil = 0;
-let fireballs;
-let bossLastShotTime = 0;
-const BOSS_SHOT_COOLDOWN = 2000;
-const BOSS_FIREBALL_SPEED = 260;
-const BOSS_BODY_WIDTH = 82;
-const BOSS_BODY_HEIGHT = 112;
-const BOSS_NEAR_DISTANCE = 320;
 
 new Phaser.Game(config);
 
 function preload() {
-  this.load.image('bg', 'assets/city.png');
-  this.load.image('ground', 'assets/city_ground.png');
-  this.load.spritesheet('fireball', 'assets/fireball.png', {
-    frameWidth: 121,
-    frameHeight: 100
-  });
+  this.load.image('bg', 'assets/citys/city 1.png');
+  this.load.image('ground', 'assets/citys/city_ground.png');
+
+  this.load.image('thanos_idle', 'assets/thanos_idle.png');
 
   // Sprite sheet do Hulk (ajuste frameWidth/frameHeight depois, se precisar)
   this.load.spritesheet('hulk', 'assets/hulk.png', {
     frameWidth: 128,
     frameHeight: 128
   });
-
-  // Boss carregado como imagem unica (sem slicing de frames)
-  this.load.image('thanos', 'assets/thanos.png');
 
   // Sprite sheet dos inimigos (alien)
   this.load.spritesheet('enemy', 'assets/enemy.png', {
@@ -161,14 +146,11 @@ function create() {
   facing = 'right';
   playerLives = 10;
   score = 0;
-  bossHealth = 5;
-  bossCanTakeHit = true;
-  bossSpawned = false;
   boss = null;
   bossSprite = null;
+  bossSpawned = false;
   lastSpawnX = 400;
   coinSpawnKeys = new Set();
-  bossLastShotTime = 0;
 
   // Fundo de imagem cobrindo todo o nivel
   const bg = this.add.image(0, 0, 'bg');
@@ -237,15 +219,6 @@ function create() {
     repeat: 0
   });
 
-  if (!this.anims.exists('fireball-fly')) {
-    this.anims.create({
-      key: 'fireball-fly',
-      frames: this.anims.generateFrameNumbers('fireball', { start: 0, end: 12 }),
-      frameRate: 14,
-      repeat: -1
-    });
-  }
-
   // Animações simples dos inimigos
   if (this.textures.exists('enemy')) {
     if (!this.anims.exists('enemy-idle')) {
@@ -291,14 +264,6 @@ function create() {
 
   // Inimigos colidem com o chão
   this.physics.add.collider(enemies, ground);
-
-  // Grupo de projéteis do boss (sem gravidade)
-  fireballs = this.physics.add.group({
-    classType: Phaser.Physics.Arcade.Sprite,
-    allowGravity: false,
-    immovable: false,
-    maxSize: 40
-  });
 
     // Colisão principal player x inimigo com prioridade de stomp
     this.physics.add.collider(player, enemies, (playerObj, enemy) => {
@@ -369,16 +334,6 @@ function create() {
     destroyEnemyOnHit(this, enemy);
   });
 
-  // Se fireball tocar no player, aplica dano e destrói o projétil
-  this.physics.add.overlap(player, fireballs, (playerObj, fireball) => {
-    if (!fireball || !fireball.active) return;
-    fireball.disableBody(true, true);
-    damagePlayer(this);
-  });
-
-  // Boss nasce depois que o player coleta 5 moedas
-  boss = null;
-
   // Moedas (círculos amarelos) com física estática
   coins = this.physics.add.staticGroup();
   createCoin(this, 180, 520);
@@ -408,11 +363,6 @@ function create() {
     score += 1;
     scoreText.setText('Moedas: ' + score);
 
-    // Spawn do boss apenas uma vez quando atingir 5 moedas
-    if (score >= 5 && !bossSpawned) {
-      spawnBoss(this, ground);
-    }
-
     // Feedback visual simples
     playCoinCollectEffect(this, coinX, coinY);
   });
@@ -433,16 +383,8 @@ function create() {
   scoreText.setScrollFactor(0);
   scoreText.setDepth(1001);
 
-  // HUD da vida do boss
-  bossText = this.add.text(20, 74, 'Boss: Locked', {
-    fontSize: '24px',
-    color: '#dd99ff'
-  });
-  bossText.setScrollFactor(0);
-  bossText.setDepth(1001);
-
   // Fundo leve para melhorar leitura do HUD
-  const hudBg = this.add.rectangle(0, 0, 250, 104, 0x000000, 0.32);
+  const hudBg = this.add.rectangle(0, 0, 250, 76, 0x000000, 0.32);
   hudBg.setOrigin(0, 0);
   hudBg.setScrollFactor(0);
   hudBg.setDepth(1000);
@@ -471,7 +413,7 @@ function create() {
   this.input.once('pointerdown', startMusicOnce);
 }
 
-function update() {
+function update(time, delta) {
   // Mantém o foot hitbox alinhado com o jogador a cada frame
   if (footHitbox && footHitbox.body && player && player.body) {
     footHitbox.x = player.body.center.x;
@@ -543,71 +485,21 @@ function update() {
     }
   });
 
-  // Boss: movimento simples no mesmo principio do player (velocity + direcao)
-  if (boss && boss.active && boss.body && boss.body.enable) {
-    const dxToPlayer = player.x - boss.x;
-    let moveDir = 0;
-
-    // Se o player estiver perto, segue o player.
-    if (Math.abs(dxToPlayer) <= BOSS_NEAR_DISTANCE) {
-      if (dxToPlayer > 16) moveDir = 1;
-      else if (dxToPlayer < -16) moveDir = -1;
-      else moveDir = 0;
-    } else {
-      // Se estiver longe, patrulha entre minX e maxX.
-      if (boss.x <= boss.minX) {
-        boss.direction = 1;
-      } else if (boss.x >= boss.maxX) {
-        boss.direction = -1;
-      }
-      moveDir = boss.direction;
-    }
-
-    boss.body.setVelocityX(boss.speed * moveDir);
-
-    // Sprite visual segue o corpo fisico do boss.
-    if (bossSprite && bossSprite.active) {
-      bossSprite.x = boss.body.center.x;
-      bossSprite.y = boss.body.bottom;
-      bossSprite.setVisible(true);
-      bossSprite.setDepth(10);
-      if (moveDir !== 0) {
-        bossSprite.setFlipX(moveDir < 0);
-      }
-    }
-
-    // Disparo periódico de fireballs sem alterar o movimento do boss
-    if (this.time.now - bossLastShotTime >= BOSS_SHOT_COOLDOWN) {
-      spawnBossFireball(this);
-      bossLastShotTime = this.time.now;
-    }
-  }
-
-  // Sync do bossSprite fora do bloco de fisica para garantir
-  // que o visual nunca desapareça mesmo em frames de transição.
-  if (bossSprite && boss && boss.body) {
-    bossSprite.x = boss.body.center.x;
-    bossSprite.y = boss.body.bottom;
-    bossSprite.setVisible(true);
-    bossSprite.setDepth(10);
-  }
-
-  // Limpa projéteis que saíram da tela útil/mundo
-  if (fireballs) {
-    fireballs.children.iterate((fireball) => {
-      if (!fireball || !fireball.active) return;
-
-      const outOfWorld = fireball.x < -40 || fireball.x > WORLD_WIDTH + 40 || fireball.y > WORLD_HEIGHT + 40;
-      if (outOfWorld) {
-        fireball.disableBody(true, true);
-      }
-    });
-  }
-
   // Spawna mais conteúdo conforme o jogador avança pelo mapa
   if (player.x > lastSpawnX) {
     spawnMoreContent(this, player.x + CONTENT_SPAWN_AHEAD);
     lastSpawnX += CONTENT_SPAWN_STEP;
+  }
+
+  // Trigger simples do boss no final do mapa
+  if (!bossSpawned && player.x >= WORLD_WIDTH - 300) {
+    spawnBoss(this);
+  }
+
+  // Sync visual do boss com o corpo físico
+  if (boss && bossSprite) {
+    bossSprite.x = boss.x;
+    bossSprite.y = boss.y;
   }
 
 }
@@ -698,110 +590,27 @@ function setPlayerAnimation(key) {
   player.anims.play(key, true);
 }
 
-// Cria um projétil simples do boss em direção horizontal ao player
-function spawnBossFireball(scene) {
-  if (!boss || !boss.active || !boss.body || !player || !player.active || !fireballs) return;
-
-  const dirX = player.x > boss.x ? 1 : -1;
-  const startX = boss.body.center.x + (40 * dirX);
-  const startY = boss.body.center.y - 12;
-  const fireball = fireballs.get(startX, startY, 'fireball');
-  if (!fireball) return;
-
-  fireball.setActive(true);
-  fireball.setVisible(true);
-  fireball.setPosition(startX, startY);
-  fireball.setDepth(20);
-  fireball.setScale(0.50); // 121x100 por frame → ~61x50 px em jogo
-  fireball.body.enable = true;
-  fireball.body.setAllowGravity(false);
-  fireball.body.setSize(80, 65, true);
-  fireball.anims.play('fireball-fly', true);
-
-  fireball.setFlipX(dirX === -1);
-  fireball.setVelocityX(BOSS_FIREBALL_SPEED * dirX);
-  fireball.setVelocityY(0);
-}
-
-// Cria boss quando o jogador junta moedas suficientes
-function spawnBoss(scene, ground) {
+// Boss simples: fica parado no final do nível
+function spawnBoss(scene) {
   if (bossSpawned) return;
   bossSpawned = true;
 
-  bossHealth = 5;
-  bossCanTakeHit = true;
+  const x = WORLD_WIDTH - 150;
+  const y = 560;
 
-  // Corpo físico do boss (invisível): toda colisão e movimento ficam aqui
-  const spawnX = WORLD_WIDTH - 120;
-  const spawnY = 560 - (BOSS_BODY_HEIGHT / 2);
-  boss = scene.add.rectangle(spawnX, spawnY, BOSS_BODY_WIDTH, BOSS_BODY_HEIGHT, 0xff00ff, 0);
-  scene.physics.add.existing(boss);
-  boss.body.setSize(BOSS_BODY_WIDTH, BOSS_BODY_HEIGHT, true);
-  boss.body.setAllowGravity(true);
-
-  // Visual separado do boss: recorta apenas a primeira pose (127x108px).
-  // setCrop age somente no sprite visual, nunca no corpo físico.
-  bossSprite = scene.add.image(spawnX, 560, 'thanos');
-  bossSprite.setCrop(0, 0, 127, 108); // primeira pose do spritesheet 510x217
-  bossSprite.setOrigin(0.5, 1);
-  bossSprite.setScale(1.2); // 127x108 * 1.2 = ~152x130px em jogo
-  bossSprite.setDepth(10);
-
+  // Corpo físico invisível
+  boss = scene.physics.add.image(x, y, 'thanos_idle');
+  boss.setVisible(false);
+  boss.body.setSize(80, 100, true);
+  boss.body.setAllowGravity(false);
+  boss.body.setImmovable(true);
   boss.body.setCollideWorldBounds(true);
-  boss.body.setImmovable(false);
-  boss.minX = spawnX - 150;
-  boss.maxX = spawnX + 150;
-  boss.direction = -1;
-  boss.speed = 90;
-  bossLastShotTime = scene.time.now;
 
-  // Boss colide com o chão
-  scene.physics.add.collider(boss, ground);
-
-  // Boss causa dano ao encostar no jogador
-  scene.physics.add.collider(player, boss, () => {
-    if (!boss || !boss.active) return;
-    damagePlayer(scene);
-  });
-
-  // Boss só toma dano da hitbox de ataque
-  scene.physics.add.overlap(attackHitbox, boss, (hitbox, bossObj) => {
-    if (!hitbox.body.enable || !bossObj.active || !bossCanTakeHit) return;
-
-    bossCanTakeHit = false;
-    bossHealth -= 1;
-    bossText.setText('Boss: ' + bossHealth);
-
-    // Feedback visual simples quando o boss toma dano
-    if (bossSprite && bossSprite.active) {
-      bossSprite.setTint(0xc77dff);
-    }
-    scene.time.delayedCall(100, () => {
-      if (bossSprite && bossSprite.active) {
-        bossSprite.clearTint();
-      }
-    });
-
-    if (bossHealth <= 0) {
-      bossObj.destroy();
-      if (bossSprite && bossSprite.active) {
-        bossSprite.destroy();
-      }
-      isGameOver = true;
-      scene.add.text(400, 300, 'YOU WIN', {
-        fontSize: '48px',
-        color: '#ffffff'
-      }).setOrigin(0.5);
-      return;
-    }
-
-    // Evita múltiplos hits no mesmo ataque
-    scene.time.delayedCall(220, () => {
-      bossCanTakeHit = true;
-    });
-  });
-
-  bossText.setText('Boss: ' + bossHealth);
+  // Visual estático do boss
+  bossSprite = scene.add.image(x, y, 'thanos_idle');
+  bossSprite.setOrigin(0.5, 1);
+  bossSprite.setScale(1.5);
+  bossSprite.setDepth(10);
 }
 
 // Função simples para criar um inimigo com patrulha horizontal
