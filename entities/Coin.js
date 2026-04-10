@@ -56,6 +56,23 @@ export default class Coin {
     const coin = this.scene.add.circle(x, y, 10, 0xffdd33);
     this.scene.physics.add.existing(coin, true);
     coin.collected = false;
+    coin.isBigCoin = false;
+    coin.coinValue = 1;
+
+    this.group.add(coin);
+    return coin;
+  }
+
+  createBigCoin(x, y) {
+    const key = 'big:' + Math.round(x) + ':' + Math.round(y);
+    if (this.spawnKeys.has(key)) return null;
+    this.spawnKeys.add(key);
+
+    const coin = this.scene.add.circle(x, y, 20, 0xffcc00);
+    this.scene.physics.add.existing(coin, true);
+    coin.collected = false;
+    coin.isBigCoin = true;
+    coin.coinValue = 5;
 
     this.group.add(coin);
     return coin;
@@ -84,16 +101,18 @@ export default class Coin {
       coin.setVisible(false);
     }
 
+    const coinValue = coin.coinValue || 1;
+
     if (this.onCollected) {
-      this.onCollected(coinX, coinY);
+      this.onCollected(coinX, coinY, coinValue, coin);
     }
 
-    this.playCollectEffect(coinX, coinY);
+    this.playCollectEffect(coinX, coinY, coinValue);
   }
 
-  playCollectEffect(x, y) {
+  playCollectEffect(x, y, coinValue = 1) {
     const sparkle = this.scene.add.circle(x, y, 6, 0xfff799, 0.8);
-    const plusOne = this.scene.add.text(x, y - 8, '+1', {
+    const plusOne = this.scene.add.text(x, y - 8, '+' + coinValue, {
       fontSize: '16px',
       color: '#ffe066'
     }).setOrigin(0.5);

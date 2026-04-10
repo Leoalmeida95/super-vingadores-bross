@@ -22,12 +22,19 @@ let musicStarted = false;
 let floatingPlatforms;
 
 function createFloatingPlatform(scene, x, y) {
-  const platform = scene.add.tileSprite(x, y, 120, 20, 'ground');
+  const platform = scene.add.tileSprite(x, y, 120, 28, 'ground');
   platform.setOrigin(0.5);
   platform.setDepth(-1);
   scene.physics.add.existing(platform, true);
-  platform.body.setSize(120, 20, true);
+  platform.body.setSize(120, 28, true);
   floatingPlatforms.add(platform);
+
+  createBigCoin(scene, x, y - 40);
+}
+
+function createBigCoin(scene, x, y) {
+  if (!scene.coinManager) return;
+  scene.coinManager.createBigCoin(x, y);
 }
 
 function startPhase(scene, phaseNumber, options = {}) {
@@ -59,7 +66,7 @@ function startPhase(scene, phaseNumber, options = {}) {
   }
 
   bossSpawned = false;
-  bossSpawnCoinsTarget = currentPhase * 50;
+  bossSpawnCoinsTarget = currentPhase * 100;
 
   scene.player.isGameOver = false;
   scene.player.isInvulnerable = false;
@@ -185,9 +192,9 @@ class GameScene extends Phaser.Scene {
 
     this.enemyManager = new EnemyManager(this, ground);
 
-    this.coinManager = new Coin(this, () => {
-      score += 1;
-      coinsCollectedTotal += 1;
+    this.coinManager = new Coin(this, (coinX, coinY, coinValue = 1) => {
+      score += coinValue;
+      coinsCollectedTotal += coinValue;
       scoreText.setText('Moedas: ' + score);
 
       if (coinsCollectedTotal >= lastLifeMilestone + 10) {
