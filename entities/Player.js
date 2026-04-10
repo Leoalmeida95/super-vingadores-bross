@@ -255,6 +255,10 @@ export default class Player {
   }
 
   update() {
+    if (!this.isUsingSpecial) {
+      this._ensureSpriteVisible();
+    }
+
     if (this.sprite && this.sprite.body && this.sprite.body.velocity.y > 0) {
       this.lastFallingAt = this.scene.time.now;
     }
@@ -329,14 +333,14 @@ export default class Player {
       }
     } else if (this.isAttacking) {
       if (this.currentAttackAnimKey) {
-        this._setAnimation(this.currentAttackAnimKey);
+        this.playPlayerAnimation(this.currentAttackAnimKey);
       }
     } else if (!onGround) {
-      this._setAnimation('jump');
+      this.playPlayerAnimation('jump');
     } else if (movingX) {
-      this._setAnimation('run');
+      this.playPlayerAnimation('run');
     } else {
-      this._setAnimation('idle');
+      this.playPlayerAnimation('idle');
     }
   }
 
@@ -344,14 +348,19 @@ export default class Player {
     const scene = this.scene;
     if (this.isAttacking || this.isUsingSpecial || !this.canAttack) return;
 
-    this.canAttack = false;
+    this._ensureSpriteVisible();
     this.isAttacking = true;
+    this.canAttack = false;
     this.currentAttackHits = new WeakSet();
     this.attackAlreadyHitBoss = false;
 
     const attackIndex = Phaser.Math.Between(1, this.attackAnimationCount);
     this.currentAttackAnimKey = 'hulk_attack_' + attackIndex;
-    this.sprite.anims.play(this.currentAttackAnimKey, true);
+    this.playPlayerAnimation(this.currentAttackAnimKey);
+
+    // Ensure no previous attack hitbox state leaks into this attack.
+    this.attackHitbox.body.enable = false;
+    this.attackHitbox.setVisible(false);
 
     const offsetX = this.facing === 'right' ? 64 : -64;
     this.attackHitbox.setPosition(
@@ -385,20 +394,17 @@ export default class Player {
       this.attackHitbox.setVisible(false);
     });
 
-    const finishAttack = () => {
-      if (!this.isAttacking) return;
+    scene.time.delayedCall(300, () => {
       this.isAttacking = false;
-      this.canAttack = true;
       this.currentAttackAnimKey = null;
-    };
-
-    this.sprite.once('animationcomplete', (anim) => {
-      if (this.currentAttackAnimKey && anim.key === this.currentAttackAnimKey) {
-        finishAttack();
+      if (!this.isUsingSpecial) {
+        this._ensureSpriteVisible();
       }
     });
 
-    scene.time.delayedCall(650, finishAttack);
+    scene.time.delayedCall(400, () => {
+      this.canAttack = true;
+    });
   }
 
   performSpecial() {
@@ -473,6 +479,7 @@ export default class Player {
       this.isUsingSpecial = false;
       this.canAttack = true;
       this.sprite.setAlpha(origAlpha);
+      this._ensureSpriteVisible();
       if (this._specialVisualSprite) {
         this._specialVisualSprite.destroy();
         this._specialVisualSprite = null;
@@ -578,10 +585,12 @@ export default class Player {
       onComplete: () => {
         if (this.isGameOver) {
           this.sprite.alpha = 1;
+          this.sprite.setVisible(true);
           this.sprite.setTint(0xff6666);
           return;
         }
         this.sprite.alpha = 1;
+        this.sprite.setVisible(true);
         this.sprite.clearTint();
       }
     });
@@ -590,6 +599,7 @@ export default class Player {
       this.isGameOver = true;
       this.sprite.setTint(0xff6666);
       this.sprite.alpha = 1;
+      this.sprite.setVisible(true);
       this.sprite.body.setVelocity(0, 0);
       this.sprite.anims.pause();
       if (scene.gameOverText) {
@@ -614,9 +624,21 @@ export default class Player {
     }
   }
 
-  _setAnimation(key) {
+  playPlayerAnimation(key) {
     if (!this.sprite || !this.sprite.anims) return;
     if (this.sprite.anims.currentAnim && this.sprite.anims.currentAnim.key === key) return;
     this.sprite.anims.play(key, true);
+  }
+
+  _ensureSpriteVisible() {
+    if (!this.sprite) return;
+    this.sprite.setVisible(true);
+    if (this.sprite.alpha !== 1) {
+      this.sprite.setAlpha(1);
+    }
+  }
+
+  _setAnimation(key) {
+    this.playPlayerAnimation(key);
   }
 }
