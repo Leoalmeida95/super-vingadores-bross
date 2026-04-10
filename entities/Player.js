@@ -373,29 +373,51 @@ export default class Player {
       this.sprite.body.center.x + offsetX,
       this.sprite.body.center.y + 10
     );
-    this.attackHitbox.setVisible(true);
+    this.attackHitbox.setVisible(false);
     this.attackHitbox.body.setSize(78, 36);
-    this.attackHitbox.body.enable = true;
+    this.attackHitbox.body.enable = false;
     this.attackHitbox.body.updateFromGameObject();
 
-    // Forca uma checagem imediata para nao perder o hit no frame inicial do ataque.
-    if (this.enemyGroup) {
-      scene.physics.overlap(this.attackHitbox, this.enemyGroup, (hitbox, enemy) => {
-        if (!enemy || !enemy.active) return;
-        this._tryAttackEnemyHit(enemy);
-      });
-    }
+    // Calculate real animation duration for timing.
+    const animDef = scene.anims.get(attackKey);
+    const totalDuration = animDef
+      ? (animDef.frames.length / animDef.frameRate) * 1000
+      : 400;
 
-    if (this.bossPhysicsBody && this.bossPhysicsBody.active) {
-      scene.physics.overlap(this.attackHitbox, this.bossPhysicsBody, (hitbox, bossObj) => {
-        if (!bossObj || !bossObj.active) return;
-        if (this.attackAlreadyHitBoss) return;
-        this.attackAlreadyHitBoss = true;
-        if (this.onBossAttackHit) this.onBossAttackHit();
-      });
-    }
+    const hitStart = totalDuration * 0.3;
+    const hitEnd = totalDuration * 0.6;
 
-    scene.time.delayedCall(230, () => {
+    // Activate hitbox at the swing point of the animation.
+    scene.time.delayedCall(hitStart, () => {
+      if (!this.isAttacking) return;
+      const offsetX = this.facing === 'right' ? 64 : -64;
+      this.attackHitbox.setPosition(
+        this.sprite.body.center.x + offsetX,
+        this.sprite.body.center.y + 10
+      );
+      this.attackHitbox.body.updateFromGameObject();
+      this.attackHitbox.setVisible(false);
+      this.attackHitbox.body.enable = true;
+
+      if (this.enemyGroup) {
+        scene.physics.overlap(this.attackHitbox, this.enemyGroup, (hitbox, enemy) => {
+          if (!enemy || !enemy.active) return;
+          this._tryAttackEnemyHit(enemy);
+        });
+      }
+
+      if (this.bossPhysicsBody && this.bossPhysicsBody.active) {
+        scene.physics.overlap(this.attackHitbox, this.bossPhysicsBody, (hitbox, bossObj) => {
+          if (!bossObj || !bossObj.active) return;
+          if (this.attackAlreadyHitBoss) return;
+          this.attackAlreadyHitBoss = true;
+          if (this.onBossAttackHit) this.onBossAttackHit();
+        });
+      }
+    });
+
+    // Deactivate hitbox after the impact window.
+    scene.time.delayedCall(hitEnd, () => {
       this.attackHitbox.body.enable = false;
       this.attackHitbox.setVisible(false);
     });
@@ -414,8 +436,8 @@ export default class Player {
     // Primary release: animation complete fires first when things work normally.
     this.sprite.once('animationcomplete-' + attackKey, releaseAttack);
 
-    // Fallback: always release after 300ms regardless of animation state.
-    scene.time.delayedCall(300, releaseAttack);
+    // Fallback: release after real animation duration + 100ms safety buffer.
+    scene.time.delayedCall(totalDuration + 100, releaseAttack);
   }
 
   performJumpAttack(scene) {
@@ -429,6 +451,7 @@ export default class Player {
     if (this.isGameOver || this.isUsingSpecial || this.isAttacking || !this.canUseSpecial) return;
 
     this.isUsingSpecial = true;
+    this.isAttacking = true;
     this.canUseSpecial = false;
     this.canAttack = false;
     this.currentSpecialHits = new WeakSet();
@@ -448,7 +471,37 @@ export default class Player {
 
     this.sprite.body.setVelocityX(0);
 
-    scene.time.delayedCall(200, () => {
+    const specialAnimKey = 'hulk_special_tall';
+    const specialAnim = scene.anims.get(specialAnimKey);
+    const totalDuration = specialAnim
+      ? (specialAnim.frames.length / specialAnim.frameRate) * 1000
+      : 700;
+    const hitStart = totalDuration * 0.3;
+    const hitEnd = totalDuration * 0.7;
+
+    const releaseSpecial = () => {
+      if (!this.isUsingSpecial && !this.isAttacking) return;
+      this.isUsingSpecial = false;
+      this.isAttacking = false;
+      this.canAttack = true;
+      this.sprite.body.setVelocityX(0);
+      this.sprite.setAlpha(origAlpha);
+      this._ensureSpriteVisible();
+      if (this.specialHitbox && this.specialHitbox.body) {
+        this.specialHitbox.body.enable = false;
+      }
+      if (this.specialHitbox) {
+        this.specialHitbox.setVisible(false);
+      }
+      if (this._specialVisualSprite) {
+        this._specialVisualSprite.destroy();
+        this._specialVisualSprite = null;
+      }
+    };
+
+    this._specialVisualSprite.once('animationcomplete-' + specialAnimKey, releaseSpecial);
+
+    scene.time.delayedCall(hitStart, () => {
       if (!this.isUsingSpecial || this.isGameOver) return;
 
       const offsetX = this.facing === 'right' ? 72 : -72;
@@ -458,7 +511,7 @@ export default class Player {
       );
       this.specialHitbox.body.setSize(112, 60);
       this.specialHitbox.body.enable = true;
-      this.specialHitbox.setVisible(true);
+      this.specialHitbox.setVisible(false);
       this.specialHitbox.body.updateFromGameObject();
 
       const effectOffsetX = this.facing === 'right' ? 80 : -80;
@@ -473,7 +526,7 @@ export default class Player {
       effect.setAlpha(0.9);
       effect.setFlipX(this.facing === 'left');
       effect.anims.play('hulk_special_effect', true);
-      scene.time.delayedCall(400, () => { effect.destroy(); });
+      scene.time.delayedCall(Math.max(100, hitEnd - hitStart), () => { effect.destroy(); });
 
       if (this.enemyGroup) {
         scene.physics.overlap(this.specialHitbox, this.enemyGroup, (hitbox, enemy) => {
@@ -481,27 +534,20 @@ export default class Player {
           this._trySpecialEnemyHit(enemy);
         });
       }
-
-      scene.time.delayedCall(400, () => {
-        if (this.specialHitbox && this.specialHitbox.body) {
-          this.specialHitbox.body.enable = false;
-        }
-        if (this.specialHitbox) {
-          this.specialHitbox.setVisible(false);
-        }
-      });
     });
 
-    scene.time.delayedCall(600, () => {
-      this.isUsingSpecial = false;
-      this.canAttack = true;
-      this.sprite.setAlpha(origAlpha);
-      this._ensureSpriteVisible();
-      if (this._specialVisualSprite) {
-        this._specialVisualSprite.destroy();
-        this._specialVisualSprite = null;
+    scene.time.delayedCall(hitEnd, () => {
+      if (this.specialHitbox && this.specialHitbox.body) {
+        this.specialHitbox.body.enable = false;
+      }
+      if (this.specialHitbox) {
+        this.specialHitbox.setVisible(false);
       }
     });
+
+    scene.time.delayedCall(totalDuration, releaseSpecial);
+
+    scene.time.delayedCall(totalDuration + 100, releaseSpecial);
 
     scene.time.delayedCall(this.specialCooldown, () => {
       this.canUseSpecial = true;
