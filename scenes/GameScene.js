@@ -119,7 +119,7 @@ function startPhase(scene, phaseNumber, options = {}) {
 
   for (let i = 1; i <= 3; i += 1) {
     const x = i * 1000;
-    const y = Phaser.Math.Between(400, 430);
+    const y = Phaser.Math.Between(380, 410);
     createFloatingPlatform(scene, x, y);
   }
 
