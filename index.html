@@ -106,6 +106,7 @@ let score = 0;
 let scoreText;
 let boss;
 let bossSprite;
+let bossAttackHitbox;
 let bossSpawned = false;
 const GROUND_COLLISION_CENTER_Y = 596;
 const BOSS_GROUND_Y = 576;
@@ -277,6 +278,7 @@ function create() {
   score = 0;
   boss = null;
   bossSprite = null;
+  bossAttackHitbox = null;
   bossSpawned = false;
   lastSpawnX = 400;
   coinSpawnKeys = new Set();
@@ -634,20 +636,35 @@ function update(time, delta) {
     const absDistance = Math.abs(distance);
 
     boss.bossDirection = distance >= 0 ? 1 : -1;
-    boss.bossState = absDistance > 120 ? 'walk' : 'idle';
+    if (absDistance <= 120 && boss.bossCanAttack && !boss.bossIsAttacking) {
+      performBossAttack(this);
+    }
 
-    if (boss.bossState === 'walk') {
-      boss.body.setVelocityX(boss.bossSpeed * boss.bossDirection);
-      playThanosAnimation(bossSprite, 'walk');
+    if (!boss.bossIsAttacking) {
+      boss.bossState = absDistance > 120 ? 'walk' : 'idle';
+
+      if (boss.bossState === 'walk') {
+        boss.body.setVelocityX(boss.bossSpeed * boss.bossDirection);
+        playThanosAnimation(bossSprite, 'walk');
+      } else {
+        boss.body.setVelocityX(0);
+        playThanosAnimation(bossSprite, 'idle');
+      }
     } else {
       boss.body.setVelocityX(0);
-      playThanosAnimation(bossSprite, 'idle');
     }
 
     boss.y = BOSS_GROUND_Y;
     bossSprite.x = boss.x + BOSS_VISUAL_X_ADJUST;
     bossSprite.y = boss.y + BOSS_VISUAL_Y_ADJUST;
     bossSprite.setFlipX(boss.bossDirection === 1);
+
+    if (bossAttackHitbox && bossAttackHitbox.body && bossAttackHitbox.body.enable) {
+      const hitboxOffsetX = boss.bossDirection === 1 ? 80 : -80;
+      bossAttackHitbox.x = boss.x + hitboxOffsetX;
+      bossAttackHitbox.y = boss.y - 65;
+      bossAttackHitbox.body.updateFromGameObject();
+    }
   }
 
 }
@@ -687,6 +704,48 @@ function performAttack(scene) {
   // Cooldown para evitar spam
   scene.time.delayedCall(300, () => {
     canAttack = true;
+  });
+}
+
+function performBossAttack(scene) {
+  if (isGameOver || !boss || !boss.body || !bossSprite || !bossAttackHitbox || !bossAttackHitbox.body) return;
+  if (!boss.bossCanAttack || boss.bossIsAttacking) return;
+
+  boss.bossIsAttacking = true;
+  boss.bossCanAttack = false;
+  boss.body.setVelocityX(0);
+
+  const attackIndex = Phaser.Math.Between(1, 5);
+  const attackAnimationKey = 'thanos_attack_' + attackIndex;
+  if (scene.anims.exists(attackAnimationKey)) {
+    if (!bossSprite.anims.currentAnim || bossSprite.anims.currentAnim.key !== attackAnimationKey) {
+      bossSprite.play(attackAnimationKey);
+    }
+  } else {
+    playThanosAnimation(bossSprite, 'attack');
+  }
+
+  const offsetX = boss.bossDirection === 1 ? 80 : -80;
+  bossAttackHitbox.setPosition(boss.x + offsetX, boss.y - 65);
+  bossAttackHitbox.body.enable = true;
+  bossAttackHitbox.body.updateFromGameObject();
+
+  scene.time.delayedCall(300, () => {
+    if (bossAttackHitbox && bossAttackHitbox.body) {
+      bossAttackHitbox.body.enable = false;
+    }
+  });
+
+  scene.time.delayedCall(500, () => {
+    if (boss) {
+      boss.bossIsAttacking = false;
+    }
+  });
+
+  scene.time.delayedCall(boss.bossAttackCooldown, () => {
+    if (boss) {
+      boss.bossCanAttack = true;
+    }
   });
 }
 
@@ -762,7 +821,23 @@ function spawnBoss(scene) {
   boss.bossState = 'idle';
   boss.bossSpeed = 60;
   boss.bossDirection = -1;
+  boss.bossIsAttacking = false;
+  boss.bossCanAttack = true;
+  boss.bossAttackCooldown = 2000;
   boss.body.setVelocityX(0);
+
+  // Hitbox de ataque do boss (invisível)
+  bossAttackHitbox = scene.add.rectangle(x, y - 65, 90, 85, 0xff0000, 0.35);
+  scene.physics.add.existing(bossAttackHitbox);
+  bossAttackHitbox.body.setAllowGravity(false);
+  bossAttackHitbox.body.setImmovable(true);
+  bossAttackHitbox.body.enable = false;
+  bossAttackHitbox.setVisible(false);
+
+  scene.physics.add.overlap(bossAttackHitbox, player, () => {
+    if (isGameOver || !boss || !bossAttackHitbox || !bossAttackHitbox.body.enable) return;
+    damagePlayer(scene);
+  });
 
   // Visual do boss (sprite para tocar animações)
   const initialFrameKey = thanosAnimations.idle[0] || 'thanos_idle';
