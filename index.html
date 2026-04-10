@@ -630,9 +630,24 @@ function update(time, delta) {
 
   // Sync visual do boss com o corpo físico
   if (boss && bossSprite) {
+    const distance = player.x - boss.x;
+    const absDistance = Math.abs(distance);
+
+    boss.bossDirection = distance >= 0 ? 1 : -1;
+    boss.bossState = absDistance > 120 ? 'walk' : 'idle';
+
+    if (boss.bossState === 'walk') {
+      boss.body.setVelocityX(boss.bossSpeed * boss.bossDirection);
+      playThanosAnimation(bossSprite, 'walk');
+    } else {
+      boss.body.setVelocityX(0);
+      playThanosAnimation(bossSprite, 'idle');
+    }
+
     boss.y = BOSS_GROUND_Y;
     bossSprite.x = boss.x + BOSS_VISUAL_X_ADJUST;
     bossSprite.y = boss.y + BOSS_VISUAL_Y_ADJUST;
+    bossSprite.setFlipX(boss.bossDirection === 1);
   }
 
 }
@@ -744,6 +759,10 @@ function spawnBoss(scene) {
   boss.body.setAllowGravity(false);
   boss.body.setImmovable(true);
   boss.body.setCollideWorldBounds(true);
+  boss.bossState = 'idle';
+  boss.bossSpeed = 60;
+  boss.bossDirection = -1;
+  boss.body.setVelocityX(0);
 
   // Visual do boss (sprite para tocar animações)
   const initialFrameKey = thanosAnimations.idle[0] || 'thanos_idle';
