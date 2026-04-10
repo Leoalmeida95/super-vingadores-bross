@@ -23,32 +23,39 @@ export default class EnemyManager {
     this.instances.forEach((enemy) => this._applyEnemyDifficulty(enemy));
   }
 
-  createInitial() {
-    const enemy1 = new Enemy(this.scene, 300, 520, 220, 420, this.group);
-    const enemy2 = new Enemy(this.scene, 520, 520, 460, 700, this.group);
-    const enemy3 = new Enemy(this.scene, 700, 520, 620, 780, this.group);
+  createEnemy(x, y, minX, maxX) {
+    const enemy = new Enemy(this.scene, x, y, minX, maxX, this.group);
+    this.instances.push(enemy);
+    this._applyEnemyDifficulty(enemy);
+    return enemy;
+  }
 
-    this.instances.push(enemy1);
-    this.instances.push(enemy2);
-    this.instances.push(enemy3);
+  createInitial(baseEnemyCount = 3, extraEnemies = 0) {
+    const basePositions = [
+      { x: 300, y: 520, minX: 220, maxX: 420 },
+      { x: 520, y: 520, minX: 460, maxX: 700 },
+      { x: 700, y: 520, minX: 620, maxX: 780 }
+    ];
 
-    this._applyEnemyDifficulty(enemy1);
-    this._applyEnemyDifficulty(enemy2);
-    this._applyEnemyDifficulty(enemy3);
+    for (let i = 0; i < Math.min(baseEnemyCount, basePositions.length); i += 1) {
+      const pos = basePositions[i];
+      this.createEnemy(pos.x, pos.y, pos.minX, pos.maxX);
+    }
+
+    for (let i = 0; i < extraEnemies; i += 1) {
+      const x = Phaser.Math.Between(200, 1000);
+      this.createEnemy(x, 520, x - 80, x + 80);
+    }
   }
 
   spawnChunk(baseX, worldWidth) {
     const enemyX1 = Phaser.Math.Clamp(baseX + 40, 120, worldWidth - 120);
-    const enemy1 = new Enemy(this.scene, enemyX1, 520, enemyX1 - 90, enemyX1 + 90, this.group);
-    this.instances.push(enemy1);
-    this._applyEnemyDifficulty(enemy1);
+    this.createEnemy(enemyX1, 520, enemyX1 - 90, enemyX1 + 90);
 
     const chunk = Math.floor(baseX / 400);
     if (chunk % 2 === 0) {
       const enemyX2 = Phaser.Math.Clamp(baseX + 220, 120, worldWidth - 120);
-      const enemy2 = new Enemy(this.scene, enemyX2, 520, enemyX2 - 70, enemyX2 + 70, this.group);
-      this.instances.push(enemy2);
-      this._applyEnemyDifficulty(enemy2);
+      this.createEnemy(enemyX2, 520, enemyX2 - 70, enemyX2 + 70);
     }
   }
 

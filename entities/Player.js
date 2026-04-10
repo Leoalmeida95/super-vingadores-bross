@@ -572,7 +572,7 @@ export default class Player {
 
       scene.time.delayedCall(1500, () => {
         if (typeof scene.startPhase === 'function') {
-          scene.startPhase(1);
+          scene.startPhase(1, { resetProgress: true });
           return;
         }
         scene.scene.restart();

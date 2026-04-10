@@ -8,28 +8,36 @@ const WORLD_HEIGHT = 600;
 const CONTENT_SPAWN_STEP = 400;
 const CONTENT_SPAWN_AHEAD = 500;
 const GROUND_COLLISION_CENTER_Y = 596;
+const baseEnemyCount = 3;
 let currentPhase = 1;
 let score = 0;
 let coinsCollectedTotal = 0;
 let lastLifeMilestone = 0;
 let bossSpawned = false;
+let bossSpawnCoinsTarget = 50;
 let scoreText;
 let phaseText;
 let bgMusic;
 let musicStarted = false;
 
-function startPhase(scene, phaseNumber) {
+function startPhase(scene, phaseNumber, options = {}) {
+  const { resetProgress = false } = options;
   currentPhase = phaseNumber;
   scene.currentPhase = currentPhase;
+  const extraEnemies = currentPhase * 2;
 
   scene.physics.resume();
 
-  score = 0;
-  coinsCollectedTotal = 0;
-  lastLifeMilestone = 0;
-  bossSpawned = false;
+  if (resetProgress) {
+    score = 0;
+    coinsCollectedTotal = 0;
+    lastLifeMilestone = 0;
+    scene.player.lives = 10;
+  }
 
-  scene.player.lives = 10;
+  bossSpawned = false;
+  bossSpawnCoinsTarget = currentPhase * 50;
+
   scene.player.isGameOver = false;
   scene.player.isInvulnerable = false;
   scene.player.sprite.setPosition(100, 450);
@@ -70,7 +78,7 @@ function startPhase(scene, phaseNumber) {
     scene.boss.lifeBar.setFillStyle(0x00ff00);
   }
 
-  scene.enemyManager.createInitial();
+  scene.enemyManager.createInitial(baseEnemyCount, extraEnemies);
   scene.enemyManager.setPhaseDifficulty(currentPhase);
   scene.coinManager.createInitial();
 
@@ -149,7 +157,7 @@ class GameScene extends Phaser.Scene {
         this.player.addLife();
       }
 
-      if (coinsCollectedTotal >= 50 && !bossSpawned) {
+      if (coinsCollectedTotal >= bossSpawnCoinsTarget && !bossSpawned) {
         bossSpawned = true;
         const warning = this.add.text(400, 200, '⚠️ Thanos está chegando!', {
           fontSize: '32px',
@@ -199,12 +207,12 @@ class GameScene extends Phaser.Scene {
     hudBg.setScrollFactor(0);
     hudBg.setDepth(1000);
 
-    this.startPhase = (phaseNumber) => {
+    this.startPhase = (phaseNumber, options = {}) => {
       currentPhase = phaseNumber;
-      startPhase(this, currentPhase);
+      startPhase(this, currentPhase, options);
     };
 
-    this.startPhase(currentPhase);
+    this.startPhase(currentPhase, { resetProgress: true });
 
     if (!bgMusic) {
       bgMusic = this.sound.add('bg-music', {
