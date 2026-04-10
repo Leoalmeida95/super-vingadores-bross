@@ -274,16 +274,21 @@ export default class Player {
       this.sprite.body.setVelocityX(0);
     }
 
+    let isMovingByInput = false;
+
     if (!this.isUsingSpecial && this.cursors.left.isDown) {
       this.sprite.body.setVelocityX(-200);
+      isMovingByInput = true;
       this.facing = 'left';
       this.sprite.setFlipX(true);
     } else if (!this.isUsingSpecial && this.cursors.right.isDown) {
       this.sprite.body.setVelocityX(200);
+      isMovingByInput = true;
       this.facing = 'right';
       this.sprite.setFlipX(false);
     } else if (!this.isUsingSpecial) {
       this.sprite.body.setVelocityX(0);
+      isMovingByInput = false;
     }
 
     const onGroundNow = this.sprite.body.touching.down || this.sprite.body.blocked.down;
@@ -315,7 +320,7 @@ export default class Player {
     }
 
     const onGround = this.sprite.body.touching.down || this.sprite.body.blocked.down;
-    const movingX = this.sprite.body.velocity.x !== 0;
+    const movingX = isMovingByInput;
 
     if (this.isUsingSpecial) {
       if (this._specialVisualSprite) {

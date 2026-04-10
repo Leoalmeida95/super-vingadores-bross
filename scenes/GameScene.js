@@ -208,12 +208,13 @@ class GameScene extends Phaser.Scene {
     });
     this.physics.add.collider(this.player.sprite, floatingPlatforms, (playerObj, platform) => {
       const isOnTop =
-        playerObj.body.bottom <= platform.body.top + 10 &&
-        playerObj.body.velocity.y >= 0;
+        playerObj.body.touching.down &&
+        platform.body.touching.up;
 
       if (isOnTop) {
-        playerObj.x += platform.body.velocity.x * (this.game.loop.delta / 1000);
-        playerObj.y += platform.body.velocity.y * (this.game.loop.delta / 1000);
+        playerObj.setVelocityX(
+          playerObj.body.velocity.x + platform.body.velocity.x
+        );
       }
     });
 
