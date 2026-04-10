@@ -72,6 +72,12 @@ function startPhase(scene, phaseNumber, options = {}) {
   scene.player.isInvulnerable = false;
   scene.player.sprite.setPosition(100, 450);
   scene.player.sprite.setVelocity(0, 0);
+  scene.player.sprite.clearTint();
+  scene.player.sprite.setAlpha(1);
+  if (scene.player.sprite.anims) {
+    scene.player.sprite.anims.resume();
+    scene.player.sprite.anims.play('idle', true);
+  }
 
   scene.enemyManager.getGroup().clear(true, true);
   scene.enemyManager.instances = [];
@@ -165,7 +171,8 @@ class GameScene extends Phaser.Scene {
   create() {
     this.lastSpawnX = 400;
 
-    const bgKey = 'bg' + Phaser.Math.Between(1, 5);
+    const bgIndex = ((currentPhase - 1) % 5) + 1;
+    const bgKey = 'bg' + bgIndex;
     const bg = this.add.image(0, 0, bgKey);
     bg.setOrigin(0, 0);
     bg.setDisplaySize(WORLD_WIDTH, WORLD_HEIGHT);

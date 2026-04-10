@@ -571,6 +571,11 @@ export default class Player {
       yoyo: true,
       repeat: 5,
       onComplete: () => {
+        if (this.isGameOver) {
+          this.sprite.alpha = 1;
+          this.sprite.setTint(0xff6666);
+          return;
+        }
         this.sprite.alpha = 1;
         this.sprite.clearTint();
       }
@@ -578,15 +583,22 @@ export default class Player {
 
     if (this.lives <= 0) {
       this.isGameOver = true;
+      this.sprite.setTint(0xff6666);
+      this.sprite.alpha = 1;
+      this.sprite.body.setVelocity(0, 0);
+      this.sprite.anims.pause();
       if (scene.gameOverText) {
         scene.gameOverText.destroy();
       }
       scene.gameOverText = scene.add.text(400, 300, 'Game Over', {
         fontSize: '48px',
-        color: '#ffffff'
+        color: '#ff3333',
+        fontStyle: 'bold'
       }).setOrigin(0.5);
+      scene.gameOverText.setScrollFactor(0);
+      scene.gameOverText.setDepth(1200);
 
-      scene.time.delayedCall(1500, () => {
+      scene.time.delayedCall(5000, () => {
         if (typeof scene.startPhase === 'function') {
           scene.startPhase(1, { resetProgress: true });
           return;

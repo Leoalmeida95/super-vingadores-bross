@@ -323,7 +323,7 @@ export default class Boss {
         ease: 'Linear'
       });
 
-      this.scene.time.delayedCall(2000, () => {
+      this.scene.time.delayedCall(5000, () => {
         if (typeof this.scene.startPhase === 'function') {
           const nextPhase = (this.scene.currentPhase || 1) + 1;
           this.scene.startPhase(nextPhase);
