@@ -115,7 +115,8 @@ class GameScene extends Phaser.Scene {
       frameHeight: 40
     });
 
-    this.load.audio('bg-music', 'assets/music.mp3');
+    this.load.audio('bg-music', 'assets/sounds/music.mp3');
+    this.load.audio('thanos-spawn-laugh', 'assets/sounds/muahaha.mp3');
 
     Boss.preload(this);
   }
@@ -159,6 +160,7 @@ class GameScene extends Phaser.Scene {
 
       if (coinsCollectedTotal >= bossSpawnCoinsTarget && !bossSpawned) {
         bossSpawned = true;
+        this.sound.play('thanos-spawn-laugh', { volume: 0.8 });
         const warning = this.add.text(400, 200, '⚠️ Thanos está chegando!', {
           fontSize: '32px',
           color: '#ff4444',
