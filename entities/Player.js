@@ -47,6 +47,7 @@ export default class Player {
 
     this.cursors = scene.input.keyboard.createCursorKeys();
     this.keyX = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+    this.keyZ = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     this.keySpecial = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
 
     this.attackHitbox = scene.add.rectangle(-100, -100, 35, 25, 0xffff00, 0.35);
@@ -124,6 +125,16 @@ export default class Player {
       scene.anims.create({
         key: 'hulk_attack',
         frames: scene.anims.generateFrameNumbers('hulk', attackFrames),
+        frameRate: 14,
+        repeat: 0
+      });
+    }
+
+    if (framesPerRow > 0 && !scene.anims.exists('hulk_jump_attack')) {
+      const row8 = this._getFramesFromRow(8, framesPerRow);
+      scene.anims.create({
+        key: 'hulk_jump_attack',
+        frames: scene.anims.generateFrameNumbers('hulk', row8),
         frameRate: 14,
         repeat: 0
       });
@@ -256,6 +267,13 @@ export default class Player {
         this._ensureSpriteVisible();
         this.sprite.setVisible(true);
         this.sprite.setAlpha(1);
+        // Safety: if isAttacking is stuck but animation stopped, release.
+        if (this.sprite.anims && !this.sprite.anims.isPlaying) {
+          this.isAttacking = false;
+          this.canAttack = true;
+          this.currentAttackAnimKey = null;
+          this.sprite.body.setVelocityX(0);
+        }
       }
     let isMovingByInput = false;
 
@@ -288,8 +306,12 @@ export default class Player {
       }
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyX) && this.canAttack && !this.isUsingSpecial) {
-      this.attack();
+    if (!this.isAttacking && this.canAttack && !this.isUsingSpecial) {
+      if (Phaser.Input.Keyboard.JustDown(this.keyX)) {
+        this.attack();
+      } else if (Phaser.Input.Keyboard.JustDown(this.keyZ)) {
+        this.performJumpAttack(this.scene);
+      }
     }
 
     if (
@@ -323,7 +345,7 @@ export default class Player {
     }
   }
 
-  attack() {
+  attack(attackKey = 'hulk_attack') {
     const scene = this.scene;
     if (this.isAttacking || this.isUsingSpecial || !this.canAttack) return;
 
@@ -333,7 +355,6 @@ export default class Player {
     this.currentAttackHits = new WeakSet();
     this.attackAlreadyHitBoss = false;
 
-    const attackKey = 'hulk_attack';
     if (!this.scene.anims.exists(attackKey)) {
       this.isAttacking = false;
       this.canAttack = true;
@@ -353,7 +374,7 @@ export default class Player {
       this.sprite.body.center.y + 10
     );
     this.attackHitbox.setVisible(true);
-    this.attackHitbox.body.setSize(58, 36);
+    this.attackHitbox.body.setSize(78, 36);
     this.attackHitbox.body.enable = true;
     this.attackHitbox.body.updateFromGameObject();
 
@@ -374,19 +395,33 @@ export default class Player {
       });
     }
 
-    scene.time.delayedCall(200, () => {
+    scene.time.delayedCall(230, () => {
       this.attackHitbox.body.enable = false;
       this.attackHitbox.setVisible(false);
     });
 
-    this.sprite.once('animationcomplete-' + attackKey, () => {
+    const releaseAttack = () => {
+      if (!this.isAttacking) return;
       this.isAttacking = false;
       this.canAttack = true;
       this.currentAttackAnimKey = null;
+      this.sprite.body.setVelocityX(0);
       if (!this.isUsingSpecial) {
         this._ensureSpriteVisible();
       }
-    });
+    };
+
+    // Primary release: animation complete fires first when things work normally.
+    this.sprite.once('animationcomplete-' + attackKey, releaseAttack);
+
+    // Fallback: always release after 300ms regardless of animation state.
+    scene.time.delayedCall(300, releaseAttack);
+  }
+
+  performJumpAttack(scene) {
+    if (this.isAttacking) return;
+    if (this.isGameOver || this.isUsingSpecial || !this.canAttack) return;
+    this.attack('hulk_jump_attack');
   }
 
   performSpecial() {

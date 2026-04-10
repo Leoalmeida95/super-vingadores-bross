@@ -77,6 +77,7 @@ export default class Boss {
     this.speed = 60;
     this.direction = -1;
     this.isAttacking = false;
+    this.isHit = false;
     this.isDefending = false;
     this.canAttack = true;
     this.attackCooldown = 3800;
@@ -150,7 +151,7 @@ export default class Boss {
       this.attack();
     }
 
-    if (!this.isAttacking && !this.isDefending) {
+    if (!this.isAttacking && !this.isHit && !this.isDefending) {
       this.state = absDistance > 120 ? 'walk' : 'idle';
 
       if (this.state === 'walk') {
@@ -162,6 +163,12 @@ export default class Boss {
       }
     } else {
       this.physicsBody.body.setVelocityX(0);
+    }
+
+    if (!this.isAttacking && !this.isHit && !this.isDefending) {
+      if (!this.sprite.anims.isPlaying) {
+        this._playAnimation('idle');
+      }
     }
 
     this.physicsBody.y = BOSS_GROUND_Y;
@@ -240,6 +247,7 @@ export default class Boss {
       if (this.sprite) this.sprite.clearTint();
     });
 
+    this.isHit = true;
     this._playAnimation('hit');
     this._updateLifeBar();
 
@@ -397,6 +405,17 @@ export default class Boss {
     this.sprite.y = this.physicsBody.y + BOSS_VISUAL_Y_ADJUST;
 
     this._playAnimation('idle');
+
+    this.sprite.on('animationcomplete', (anim) => {
+      if (anim.key.includes('attack') || anim.key.includes('hit')) {
+        this.isAttacking = false;
+        this.isHit = false;
+
+        if (this.sprite && this.sprite.active && !this.isDead) {
+          this._playAnimation('idle');
+        }
+      }
+    });
 
     this.lifeBg.setVisible(true);
     this.lifeBar.setVisible(true);
