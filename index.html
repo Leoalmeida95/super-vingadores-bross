@@ -651,11 +651,23 @@ function update(time, delta) {
     const absDistance = Math.abs(distance);
 
     boss.bossDirection = distance >= 0 ? 1 : -1;
-    if (absDistance <= 120 && boss.bossCanAttack && !boss.bossIsAttacking) {
+
+    // Defesa automática (prioridade máxima, exceto se já atacando)
+    if (absDistance <= 80 && !boss.bossIsAttacking && !boss.bossIsDefending) {
+      boss.bossIsDefending = true;
+      boss.body.setVelocityX(0);
+      playThanosAnimation(bossSprite, 'defense');
+      this.time.delayedCall(800, () => {
+        if (boss) boss.bossIsDefending = false;
+      });
+    }
+
+    // Ataque (só se não estiver defendendo)
+    if (absDistance <= 120 && boss.bossCanAttack && !boss.bossIsAttacking && !boss.bossIsDefending) {
       performBossAttack(this);
     }
 
-    if (!boss.bossIsAttacking) {
+    if (!boss.bossIsAttacking && !boss.bossIsDefending) {
       boss.bossState = absDistance > 120 ? 'walk' : 'idle';
 
       if (boss.bossState === 'walk') {
@@ -724,43 +736,47 @@ function performAttack(scene) {
 
 function performBossAttack(scene) {
   if (isGameOver || !boss || !boss.body || !bossSprite || !bossAttackHitbox || !bossAttackHitbox.body) return;
-  if (!boss.bossCanAttack || boss.bossIsAttacking) return;
+  if (!boss.bossCanAttack || boss.bossIsAttacking || boss.bossIsDefending) return;
 
   boss.bossIsAttacking = true;
   boss.bossCanAttack = false;
   boss.body.setVelocityX(0);
 
-  const attackIndex = Phaser.Math.Between(1, 5);
-  const attackAnimationKey = 'thanos_attack_' + attackIndex;
-  if (scene.anims.exists(attackAnimationKey)) {
-    if (!bossSprite.anims.currentAnim || bossSprite.anims.currentAnim.key !== attackAnimationKey) {
-      bossSprite.play(attackAnimationKey);
-    }
+  const isSpecial = boss.bossAttackStep === 1;
+
+  if (isSpecial) {
+    playThanosAnimation(bossSprite, 'special');
   } else {
     playThanosAnimation(bossSprite, 'attack');
   }
 
+  boss.bossAttackStep = (boss.bossAttackStep + 1) > 1 ? 0 : boss.bossAttackStep + 1;
+
   const offsetX = boss.bossDirection === 1 ? 80 : -80;
   bossAttackHitbox.setPosition(boss.x + offsetX, boss.y - 65);
+
+  if (isSpecial) {
+    bossAttackHitbox.width = 135;
+  } else {
+    bossAttackHitbox.width = 90;
+  }
+  bossAttackHitbox.body.setSize(bossAttackHitbox.width, 85);
   bossAttackHitbox.body.enable = true;
   bossAttackHitbox.body.updateFromGameObject();
 
-  scene.time.delayedCall(300, () => {
+  const hitboxDuration = isSpecial ? 500 : 300;
+  scene.time.delayedCall(hitboxDuration, () => {
     if (bossAttackHitbox && bossAttackHitbox.body) {
       bossAttackHitbox.body.enable = false;
     }
   });
 
-  scene.time.delayedCall(500, () => {
-    if (boss) {
-      boss.bossIsAttacking = false;
-    }
+  scene.time.delayedCall(isSpecial ? 700 : 500, () => {
+    if (boss) boss.bossIsAttacking = false;
   });
 
   scene.time.delayedCall(boss.bossAttackCooldown, () => {
-    if (boss) {
-      boss.bossCanAttack = true;
-    }
+    if (boss) boss.bossCanAttack = true;
   });
 }
 
@@ -837,8 +853,10 @@ function spawnBoss(scene) {
   boss.bossSpeed = 60;
   boss.bossDirection = -1;
   boss.bossIsAttacking = false;
+  boss.bossIsDefending = false;
   boss.bossCanAttack = true;
   boss.bossAttackCooldown = 2000;
+  boss.bossAttackStep = 0;
   boss.bossLife = 20;
   boss.bossMaxLife = 20;
   boss.bossIsDead = false;
@@ -893,7 +911,7 @@ function updateBossLifeBar() {
 }
 
 function damageBoss(scene, damage) {
-  if (!boss || boss.bossIsDead) return;
+  if (!boss || boss.bossIsDead || boss.bossIsDefending) return;
 
   boss.bossLife -= damage;
   boss.body.setVelocityX(0);
