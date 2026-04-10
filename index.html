@@ -107,7 +107,9 @@ let scoreText;
 let boss;
 let bossSprite;
 let bossSpawned = false;
-const BOSS_GROUND_Y = 560;
+const GROUND_COLLISION_CENTER_Y = 596;
+const BOSS_GROUND_Y = 576;
+const BOSS_VISUAL_X_ADJUST = 10;
 const BOSS_VISUAL_Y_ADJUST = -14;
 let thanosAnimations = {
   idle: [],
@@ -297,7 +299,7 @@ function create() {
   groundVisual.setDepth(-1);
 
   // Corpo físico invisível alinhado ao chão (mantém todas as colisões existentes)
-  const groundBody = this.add.rectangle(WORLD_WIDTH / 2, 580, WORLD_WIDTH, 40);
+  const groundBody = this.add.rectangle(WORLD_WIDTH / 2, GROUND_COLLISION_CENTER_Y, WORLD_WIDTH, 40);
   groundBody.setAlpha(0);
   this.physics.add.existing(groundBody, true);
   const ground = groundBody;
@@ -629,7 +631,7 @@ function update(time, delta) {
   // Sync visual do boss com o corpo físico
   if (boss && bossSprite) {
     boss.y = BOSS_GROUND_Y;
-    bossSprite.x = boss.x;
+    bossSprite.x = boss.x + BOSS_VISUAL_X_ADJUST;
     bossSprite.y = boss.y + BOSS_VISUAL_Y_ADJUST;
   }
 
@@ -749,6 +751,7 @@ function spawnBoss(scene) {
   bossSprite.setOrigin(0.5, 1);
   bossSprite.setScale(1.5);
   bossSprite.setDepth(10);
+  bossSprite.x = boss.x + BOSS_VISUAL_X_ADJUST;
   bossSprite.y = boss.y + BOSS_VISUAL_Y_ADJUST;
 
   playThanosAnimation(bossSprite, 'idle');
