@@ -7,7 +7,9 @@ export default class Player {
     this.canAttack = true;
     this.isAttacking = false;
     this.facing = 'right';
-    this.stompLockUntil = 0;
+    this.debugStomp = false;
+    this.lastFallingAt = -99999;
+    this.stompGraceMs = 120;
 
     this.sprite = scene.physics.add.sprite(100, 450, 'hulk', 0);
     this.sprite.body.setCollideWorldBounds(true);
@@ -96,21 +98,26 @@ export default class Player {
       if (!enemy || !enemy.active || enemy.isDying) return;
       if (this.attackHitbox && this.attackHitbox.body.enable) return;
 
-      const isFalling = playerObj.body.velocity.y > 50;
-      const stompBySensor = scene.physics.overlap(this.footHitbox, enemy);
+      const velocityY = playerObj.body.velocity.y;
+      const isFallingNow = velocityY > 0;
+      const wasFallingRecently = (scene.time.now - this.lastFallingAt) <= this.stompGraceMs;
+      const stompByTop = playerObj.body.bottom <= enemy.body.top + 30;
 
-      const aboveEnemyCenter = playerObj.body.center.y < enemy.body.center.y;
-      const topTolerance = playerObj.body.bottom <= enemy.body.top + 40;
-      const stompByTop = aboveEnemyCenter && topTolerance;
+      if (this.debugStomp) {
+        console.log({
+          playerBottom: playerObj.body.bottom,
+          enemyTop: enemy.body.top,
+          velocityY,
+          wasFallingRecently,
+          stompByTop
+        });
+      }
 
-      if (isFalling && (stompBySensor || stompByTop)) {
-        this.stompLockUntil = scene.time.now + 120;
+      if ((isFallingNow || wasFallingRecently) && stompByTop) {
         onEnemyDestroyed(enemy);
         playerObj.setVelocityY(-350);
         return;
       }
-
-      if (scene.time.now < this.stompLockUntil) return;
 
       this.takeDamage();
     });
@@ -123,6 +130,10 @@ export default class Player {
   }
 
   update() {
+    if (this.sprite && this.sprite.body && this.sprite.body.velocity.y > 0) {
+      this.lastFallingAt = this.scene.time.now;
+    }
+
     if (this.footHitbox && this.footHitbox.body && this.sprite && this.sprite.body) {
       this.footHitbox.x = this.sprite.body.center.x;
       this.footHitbox.y = this.sprite.body.bottom + 4;
