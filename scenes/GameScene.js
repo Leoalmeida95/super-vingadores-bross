@@ -78,7 +78,7 @@ function startPhase(scene, phaseNumber, options = {}) {
     score = 0;
     coinsCollectedTotal = 0;
     lastLifeMilestone = 0;
-    scene.player.lives = 15;
+    scene.player.lives = 50;
   }
 
   bossSpawned = false;
@@ -355,6 +355,29 @@ class GameScene extends Phaser.Scene {
     }
 
     this.boss.update(this.player);
+    this._enforceSpriteVisibility(window.SPRITES_VISIBLE !== false);
+  }
+
+  _enforceSpriteVisibility(visible) {
+    if (this.player && this.player.sprite) {
+      this.player.sprite.setVisible(visible);
+    }
+    if (this.player && this.player._specialVisualSprite) {
+      this.player._specialVisualSprite.setVisible(visible);
+    }
+    if (this.boss && this.boss.sprite) {
+      this.boss.sprite.setVisible(visible);
+    }
+    this.enemyManager.instances.forEach((enemy) => {
+      if (enemy.sprite && enemy.sprite.active) {
+        enemy.sprite.setVisible(visible);
+      }
+    });
+    this.coinManager.group.getChildren().forEach((coin) => {
+      if (coin && coin.active && !coin.collected) {
+        coin.setVisible(visible);
+      }
+    });
   }
 }
 
