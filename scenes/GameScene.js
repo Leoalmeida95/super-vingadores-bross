@@ -78,7 +78,7 @@ function startPhase(scene, phaseNumber, options = {}) {
     score = 0;
     coinsCollectedTotal = 0;
     lastLifeMilestone = 0;
-    scene.player.lives = 50;
+    scene.player.lives = 100;
   }
 
   bossSpawned = false;
