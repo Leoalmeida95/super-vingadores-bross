@@ -695,6 +695,7 @@ export default class Player {
 
   _ensureSpriteVisible() {
     if (!this.sprite) return;
+    if (window.SPRITES_VISIBLE === false) return;
     this.sprite.setVisible(true);
     if (this.sprite.alpha !== 1) {
       this.sprite.setAlpha(1);
