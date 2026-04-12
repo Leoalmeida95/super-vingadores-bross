@@ -9,6 +9,7 @@ const CONTENT_SPAWN_STEP = 400;
 const CONTENT_SPAWN_AHEAD = 500;
 const GROUND_COLLISION_CENTER_Y = 596;
 const baseEnemyCount = 3;
+const extraEnemiesPerPhase = 2;
 let currentPhase = 1;
 let score = 0;
 let coinsCollectedTotal = 0;
@@ -57,7 +58,7 @@ function startPhase(scene, phaseNumber, options = {}) {
   if (scene.bg) {
     scene.bg.setTexture(getPhaseBackgroundKey(currentPhase));
   }
-  const extraEnemies = currentPhase * 2;
+  const extraEnemies = currentPhase * extraEnemiesPerPhase;
 
   if (scene.gameOverText) {
     scene.gameOverText.destroy();
@@ -343,18 +344,19 @@ class GameScene extends Phaser.Scene {
 
     this.player.update();
 
-    if (this.player.isGameOver) return;
+    if (!this.player.isGameOver) {
+      this.enemyManager.update();
 
-    this.enemyManager.update();
+      if (this.player.sprite.x > this.lastSpawnX) {
+        const baseX = Phaser.Math.Clamp(this.player.sprite.x + CONTENT_SPAWN_AHEAD, 200, WORLD_WIDTH - 200);
+        this.enemyManager.spawnChunk(baseX, WORLD_WIDTH);
+        this.coinManager.spawnChunk(baseX, WORLD_WIDTH);
+        this.lastSpawnX += CONTENT_SPAWN_STEP;
+      }
 
-    if (this.player.sprite.x > this.lastSpawnX) {
-      const baseX = Phaser.Math.Clamp(this.player.sprite.x + CONTENT_SPAWN_AHEAD, 200, WORLD_WIDTH - 200);
-      this.enemyManager.spawnChunk(baseX, WORLD_WIDTH);
-      this.coinManager.spawnChunk(baseX, WORLD_WIDTH);
-      this.lastSpawnX += CONTENT_SPAWN_STEP;
+      this.boss.update(this.player);
     }
 
-    this.boss.update(this.player);
     this._enforceSpriteVisibility(window.SPRITES_VISIBLE !== false);
   }
 

@@ -1,5 +1,11 @@
 import Enemy from './Enemy.js';
 
+const ENEMIES_PER_CHUNK_BASE = 1;
+const ENEMIES_PER_CHUNK_PER_PHASE = 1;
+const MAX_ENEMIES_PER_CHUNK = 8;
+const CHUNK_ENEMY_SPACING = 70;
+const CHUNK_FIRST_OFFSET = 40;
+
 export default class EnemyManager {
   constructor(scene, ground) {
     this.scene = scene;
@@ -49,13 +55,21 @@ export default class EnemyManager {
   }
 
   spawnChunk(baseX, worldWidth) {
-    const enemyX1 = Phaser.Math.Clamp(baseX + 40, 120, worldWidth - 120);
-    this.createEnemy(enemyX1, 520, enemyX1 - 90, enemyX1 + 90);
+    const phase = Math.max(1, this.phaseNumber);
+    const enemiesPerChunk = Math.min(
+      MAX_ENEMIES_PER_CHUNK,
+      ENEMIES_PER_CHUNK_BASE + (phase * ENEMIES_PER_CHUNK_PER_PHASE)
+    );
 
-    const chunk = Math.floor(baseX / 400);
-    if (chunk % 2 === 0) {
-      const enemyX2 = Phaser.Math.Clamp(baseX + 220, 120, worldWidth - 120);
-      this.createEnemy(enemyX2, 520, enemyX2 - 70, enemyX2 + 70);
+    for (let i = 0; i < enemiesPerChunk; i += 1) {
+      const jitter = Phaser.Math.Between(-20, 20);
+      const enemyX = Phaser.Math.Clamp(
+        baseX + CHUNK_FIRST_OFFSET + (i * CHUNK_ENEMY_SPACING) + jitter,
+        120,
+        worldWidth - 120
+      );
+      const patrolRange = Phaser.Math.Between(70, 110);
+      this.createEnemy(enemyX, 520, enemyX - patrolRange, enemyX + patrolRange);
     }
   }
 
