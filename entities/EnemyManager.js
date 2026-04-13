@@ -1,8 +1,8 @@
 import Enemy from './Enemy.js';
 
 const ENEMIES_PER_CHUNK_BASE = 1;
-const ENEMIES_PER_CHUNK_PER_PHASE = 1;
-const MAX_ENEMIES_PER_CHUNK = 8;
+const ENEMIES_PER_CHUNK_PER_PHASE = 2;
+const MAX_ENEMIES_PER_CHUNK = 12;
 const CHUNK_ENEMY_SPACING = 70;
 const CHUNK_FIRST_OFFSET = 40;
 
